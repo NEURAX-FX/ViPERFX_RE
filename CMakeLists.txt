@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.16.3)
 project("ViPER4Android")
 
+option(BUILD_ANALYZER_TESTS "Build host-side audio analyzer tests" OFF)
+
 set(VERSION_CODE "00000000" CACHE STRING "Build version code")
 set(VERSION_NAME "0.0.0" CACHE STRING "Build version name")
 
@@ -17,6 +19,18 @@ add_compile_options(
     -fvisibility=hidden -fvisibility-inlines-hidden)
 
 add_subdirectory(ViPERDSP)
+
+if(BUILD_ANALYZER_TESTS)
+    enable_testing()
+    add_executable(audio_analyzer_test
+        tests/AudioAnalyzerTest.cpp
+        ViPERDSP/viper/effects/AudioAnalyzer.cpp
+        ViPERDSP/viper/utils/pffft.c
+    )
+    target_include_directories(audio_analyzer_test PRIVATE ViPERDSP src)
+    target_link_libraries(audio_analyzer_test PRIVATE m)
+    add_test(NAME audio_analyzer_test COMMAND audio_analyzer_test)
+endif()
 
 add_library(v4a_re SHARED
     src/ViPER4Android.cpp

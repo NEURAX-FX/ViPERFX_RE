@@ -1,4 +1,5 @@
 #include "ViperContext.h"
+#include "TelemetryProtocol.h"
 #include "log.h"
 #include "viper/constants.h"
 #include <cerrno>
@@ -15,6 +16,7 @@ constexpr int32_t kParamGetConvolutionKernelId = 5;
 constexpr int32_t kParamGetDriverVersionCode = 6;
 constexpr int32_t kParamGetDriverVersionName = 7;
 constexpr int32_t kParamGetArchitecture = 8;
+constexpr int32_t kParamGetTelemetry = 9;
 
 ViperContext::ViperContext() :
     config_({}),
@@ -169,6 +171,9 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
     // ViPER
     viper_.SetSamplingRate(config_.input_cfg.sampling_rate);
     viper_.ResetAllEffects();
+    if (!analyzer_.Configure(config_.input_cfg.sampling_rate, 2)) {
+        VIPER_LOGE("Failed to configure audio analyzer");
+    }
 }
 
 int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data) {
@@ -305,6 +310,23 @@ int32_t ViperContext::HandleGetParam(
                 sizeof(effect_param_t) + reply_param->psize + offset + reply_param->vsize;
             return 0;
         }
+        case kParamGetTelemetry: {
+            const uint32_t required_size =
+                sizeof(effect_param_t) + offset + sizeof(viper::TelemetryWire);
+            if (*reply_size < required_size) {
+                *reply_size = required_size;
+                return -ENOSPC;
+            }
+
+            viper::AnalyzerSnapshot snapshot{};
+            if (!analyzer_.ReadTelemetry(&snapshot)) return -ENODATA;
+            const viper::TelemetryWire wire = viper::MakeTelemetryWire(snapshot);
+            reply_param->status = 0;
+            reply_param->vsize = sizeof(wire);
+            memcpy(reply_param->data + offset, &wire, sizeof(wire));
+            *reply_size = required_size;
+            return 0;
+        }
         default: {
             return -EINVAL;
         }
@@ -366,6 +388,7 @@ int32_t ViperContext::HandleCommand(
                 return -EINVAL;
             }
             viper_.ResetAllEffects();
+            analyzer_.Reset();
             SET(int32_t, reply_data, 0);
             return 0;
         }
@@ -381,6 +404,7 @@ int32_t ViperContext::HandleCommand(
                 return -EINVAL;
             }
             viper_.ResetAllEffects();
+            analyzer_.Reset();
             if (!buffer_.empty()) {
                 memset(buffer_.data(), 0, buffer_.size() * sizeof(float));
             }
@@ -402,6 +426,7 @@ int32_t ViperContext::HandleCommand(
                 );
                 return -EINVAL;
             }
+            analyzer_.Reset();
             enable_ = false;
             SET(int32_t, reply_data, 0);
             return 0;
@@ -556,6 +581,7 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
                            .count();
         if (elapsed > 100) {
             viper_.ResetAllEffects();
+            analyzer_.Reset();
             fade_in_remaining_ = 128;
         }
     } else {
@@ -603,6 +629,11 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
     }
 
     viper_.Process(buffer_, frame_count);
+    analyzer_.Push(buffer_.data(), frame_count);
+    const auto compressor_meters = viper_.GetCompressorGainReductionDb();
+    for (size_t i = 0; i < compressor_meters.size(); ++i) {
+        analyzer_.SetMeter(i, compressor_meters[i]);
+    }
 
     const bool accumulate =
         config_.output_cfg.access_mode == EFFECT_BUFFER_ACCESS_ACCUMULATE;

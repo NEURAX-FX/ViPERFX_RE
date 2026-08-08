@@ -2,6 +2,7 @@
 
 #include "essential.h"
 #include "viper/ViPER.h"
+#include "viper/effects/AudioAnalyzer.h"
 #include <chrono>
 #include <string>
 #include <vector>
@@ -40,6 +41,7 @@ private:
     // Viper
     bool enable_;
     ViPER viper_;
+    viper::AudioAnalyzer analyzer_;
     uint64_t last_streaming_frames_ = 0;
 
     // Stream discontinuity detection
