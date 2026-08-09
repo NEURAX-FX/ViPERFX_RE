@@ -30,9 +30,16 @@ if(BUILD_ANALYZER_TESTS)
     target_include_directories(audio_analyzer_test PRIVATE ViPERDSP src)
     target_link_libraries(audio_analyzer_test PRIVATE m)
     add_test(NAME audio_analyzer_test COMMAND audio_analyzer_test)
+
+    add_executable(audio_format_test
+        tests/AudioFormatTest.cpp
+        src/AudioFormat.cpp
+    )
+    target_include_directories(audio_format_test PRIVATE src)
 endif()
 
 add_library(v4a_re SHARED
+    src/AudioFormat.cpp
     src/ViPER4Android.cpp
     src/ViperContext.cpp
 )

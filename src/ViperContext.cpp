@@ -1,4 +1,5 @@
 #include "ViperContext.h"
+#include "AudioFormat.h"
 #include "TelemetryProtocol.h"
 #include "log.h"
 #include "viper/constants.h"
@@ -105,6 +106,19 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
         return;
     }
 
+    if (!viper::audio::IsSupportedSampleRate(config_.input_cfg.sampling_rate)) {
+        VIPER_LOGE(
+            "ViPER4Android disabled, unsupported sampling rate [%d]",
+            config_.input_cfg.sampling_rate
+        );
+        SetDisableReason(
+            DisableReason::INVALID_SAMPLING_RATE,
+            "Unsupported sampling rate: "
+                + std::to_string(config_.input_cfg.sampling_rate)
+        );
+        return;
+    }
+
     if (config_.input_cfg.channels != config_.output_cfg.channels) {
         VIPER_LOGE(
             "ViPER4Android disabled, reason [in.CH = %d, out.CH = %d]",
@@ -127,15 +141,11 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
         return;
     }
 
-    if (config_.input_cfg.format != AUDIO_FORMAT_PCM_16_BIT
-        && config_.input_cfg.format != AUDIO_FORMAT_PCM_32_BIT
-        && config_.input_cfg.format != AUDIO_FORMAT_PCM_FLOAT) {
+    if (!viper::audio::IsSupportedPcmFormat(
+            static_cast<audio_format_t>(config_.input_cfg.format)
+        )) {
         VIPER_LOGE(
             "ViPER4Android disabled, reason [in.FMT = %d]", config_.input_cfg.format
-        );
-        VIPER_LOGE(
-            "We only accept AUDIO_FORMAT_PCM_16_BIT, AUDIO_FORMAT_PCM_32_BIT and "
-            "AUDIO_FORMAT_PCM_FLOAT input format!"
         );
         SetDisableReason(
             DisableReason::INVALID_FORMAT,
@@ -144,15 +154,11 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
         return;
     }
 
-    if (config_.output_cfg.format != AUDIO_FORMAT_PCM_16_BIT
-        && config_.output_cfg.format != AUDIO_FORMAT_PCM_32_BIT
-        && config_.output_cfg.format != AUDIO_FORMAT_PCM_FLOAT) {
+    if (!viper::audio::IsSupportedPcmFormat(
+            static_cast<audio_format_t>(config_.output_cfg.format)
+        )) {
         VIPER_LOGE(
             "ViPER4Android disabled, reason [out.FMT = %d]", config_.output_cfg.format
-        );
-        VIPER_LOGE(
-            "We only accept AUDIO_FORMAT_PCM_16_BIT, AUDIO_FORMAT_PCM_32_BIT and "
-            "AUDIO_FORMAT_PCM_FLOAT output format!"
         );
         SetDisableReason(
             DisableReason::INVALID_FORMAT,
@@ -165,8 +171,11 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
     SetDisableReason(DisableReason::NONE);
 
     // Processing buffer
-    buffer_.resize(config_.input_cfg.buffer.frame_count * 2);
-    buffer_frame_count_ = config_.input_cfg.buffer.frame_count;
+    buffer_.assign(
+        viper::audio::kMaxBlockFrames * viper::audio::kChannelCount,
+        0.0F
+    );
+    buffer_frame_count_ = viper::audio::kMaxBlockFrames;
 
     // ViPER
     viper_.SetSamplingRate(config_.input_cfg.sampling_rate);
@@ -494,51 +503,6 @@ int32_t ViperContext::HandleCommand(
     }
 }
 
-template <typename T>
-void PcmToFloat(float *dst, const T *src, const size_t frame_count) {
-    constexpr auto max_val = static_cast<float>(std::numeric_limits<T>::max());
-    for (size_t i = 0; i < frame_count * 2; i++) {
-        dst[i] = static_cast<float>(src[i]) / max_val;
-    }
-}
-
-template <typename T>
-static const T &clamp(const T &v, const T &lo, const T &hi) {
-    return std::min(std::max(v, lo), hi);
-}
-
-static void FloatToFloat(
-    float *dst, const float *src, const size_t frame_count, const bool accumulate
-) {
-    if (accumulate) {
-        for (size_t i = 0; i < frame_count * 2; i++) {
-            dst[i] = clamp(dst[i] + src[i], -1.0f, 1.0f);
-        }
-    } else {
-        memcpy(dst, src, frame_count * 2 * sizeof(float));
-    }
-}
-
-template <typename T, typename U>
-void FloatToPcm(
-    T *dst, const float *src, const size_t frame_count, const bool accumulate
-) {
-    constexpr T max_val = std::numeric_limits<T>::max();
-    constexpr T min_val = std::numeric_limits<T>::min();
-
-    for (size_t i = 0; i < frame_count * 2; i++) {
-        T pcm = static_cast<T>(src[i] * static_cast<float>(max_val));
-        if (accumulate) {
-            U temp = static_cast<U>(dst[i]) + pcm;
-            dst[i] = static_cast<T>(
-                clamp(temp, static_cast<U>(min_val), static_cast<U>(max_val))
-            );
-        } else {
-            dst[i] = pcm;
-        }
-    }
-}
-
 static audio_buffer_t *GetBuffer(buffer_config_s *config, audio_buffer_t *buffer) {
     if (buffer != nullptr) return buffer;
     if (config->mask & EFFECT_CONFIG_BUFFER) return &config->buffer;
@@ -593,27 +557,26 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
 
     size_t frame_count = in_buffer->frame_count;
     if (frame_count > buffer_frame_count_) {
-        buffer_.resize(frame_count * 2);
-        buffer_frame_count_ = frame_count;
+        SetDisableReason(
+            DisableReason::INVALID_FRAME_COUNT,
+            "Process frame count exceeds prepared capacity: " + std::to_string(frame_count)
+        );
+        return -EINVAL;
     }
 
-    switch (config_.input_cfg.format) {
-        case AUDIO_FORMAT_PCM_16_BIT:
-            PcmToFloat<int16_t>(buffer_.data(), in_buffer->s16, frame_count);
-            break;
-        case AUDIO_FORMAT_PCM_32_BIT:
-            PcmToFloat<int32_t>(buffer_.data(), in_buffer->s32, frame_count);
-            break;
-        case AUDIO_FORMAT_PCM_FLOAT:
-            FloatToFloat(buffer_.data(), in_buffer->f32, frame_count, false);
-            break;
-        default:
+    if (!viper::audio::ToFloat(
+            buffer_.data(),
+            in_buffer->raw,
+            frame_count,
+            static_cast<audio_format_t>(config_.input_cfg.format)
+        )) {
 #if defined(__aarch64__)
-            asm volatile("msr fpcr, %0" ::"r"(orig_fpcr));
+        asm volatile("msr fpcr, %0" ::"r"(orig_fpcr));
 #elif defined(__arm__)
-            asm volatile("vmsr fpscr, %0" ::"r"(orig_fpscr));
+        asm volatile("vmsr fpscr, %0" ::"r"(orig_fpscr));
 #endif
-            return -EINVAL;
+        SetDisableReason(DisableReason::INVALID_FORMAT, "Failed to decode input PCM");
+        return -EINVAL;
     }
 
     // TODO: Remove fade-in.
@@ -637,27 +600,20 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
 
     const bool accumulate =
         config_.output_cfg.access_mode == EFFECT_BUFFER_ACCESS_ACCUMULATE;
-    switch (config_.output_cfg.format) {
-        case AUDIO_FORMAT_PCM_16_BIT:
-            FloatToPcm<int16_t, int32_t>(
-                out_buffer->s16, buffer_.data(), frame_count, accumulate
-            );
-            break;
-        case AUDIO_FORMAT_PCM_32_BIT:
-            FloatToPcm<int32_t, int64_t>(
-                out_buffer->s32, buffer_.data(), frame_count, accumulate
-            );
-            break;
-        case AUDIO_FORMAT_PCM_FLOAT:
-            FloatToFloat(out_buffer->f32, buffer_.data(), frame_count, accumulate);
-            break;
-        default:
+    if (!viper::audio::FromFloat(
+            out_buffer->raw,
+            buffer_.data(),
+            frame_count,
+            static_cast<audio_format_t>(config_.output_cfg.format),
+            accumulate
+        )) {
 #if defined(__aarch64__)
-            asm volatile("msr fpcr, %0" ::"r"(orig_fpcr));
+        asm volatile("msr fpcr, %0" ::"r"(orig_fpcr));
 #elif defined(__arm__)
-            asm volatile("vmsr fpscr, %0" ::"r"(orig_fpscr));
+        asm volatile("vmsr fpscr, %0" ::"r"(orig_fpscr));
 #endif
-            return -EINVAL;
+        SetDisableReason(DisableReason::INVALID_FORMAT, "Failed to encode output PCM");
+        return -EINVAL;
     }
 
 #if defined(__aarch64__)
