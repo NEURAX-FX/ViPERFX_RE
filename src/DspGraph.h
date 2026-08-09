@@ -16,6 +16,7 @@ struct DspGraphConfig {
 class DspGraph final {
 public:
     bool Prepare(const DspGraphConfig &config);
+    bool Prepare(const DspGraphConfig &config, const viper::ViPERParams &snapshot);
     void Reset() noexcept;
     bool Process(float *interleaved, size_t frame_count) noexcept;
 

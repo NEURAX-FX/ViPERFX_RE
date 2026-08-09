@@ -1,4 +1,5 @@
 #include "DspGraph.h"
+#include "ViPERParams.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -51,11 +52,38 @@ bool TestPrepareAndProcessAt384Khz() {
     return Check(!graph.Process(silence.data(), 8193), "reject oversized block");
 }
 
+bool TestRawParametersSurviveGraphRebuild() {
+    using namespace viper::params;
+    viper::audio::DspGraph active;
+    if (!active.Prepare({48000, 8192, 1})) return false;
+    active.Engine().DispatchRawParam(kParamBassEnable, 1, 0, 0, 0, nullptr);
+    active.Engine().DispatchRawParam(kParamBassFrequency, 90, 0, 0, 0, nullptr);
+    active.Engine().DispatchRawParam(kParamReverbWet, 40, 0, 0, 0, nullptr);
+    const viper::ViPERParams snapshot = active.Engine().CurrentParams();
+    if (!Check(snapshot.bass.enable, "raw dispatch updates snapshot enable")) return false;
+    if (!Check(snapshot.bass.frequency == 90, "raw dispatch updates snapshot value")) {
+        return false;
+    }
+
+    viper::audio::DspGraph replacement;
+    if (!Check(
+            replacement.Prepare({96000, 8192, 2}, snapshot),
+            "prepare replacement from immutable snapshot"
+        )) {
+        return false;
+    }
+    const auto &restored = replacement.Engine().CurrentParams();
+    return Check(restored.bass.enable, "restore enabled effect")
+        && Check(restored.bass.frequency == 90, "restore effect value")
+        && Check(std::fabs(restored.reverb.wet - 0.4F) < 1.0e-6F, "restore disabled effect value");
+}
+
 } // namespace
 
 int main() {
     if (!TestConfigurationValidation()) return 1;
     if (!TestPrepareAndProcessAt384Khz()) return 1;
+    if (!TestRawParametersSurviveGraphRebuild()) return 1;
     std::puts("DspGraph tests passed");
     return 0;
 }

@@ -51,6 +51,12 @@ if(BUILD_ANALYZER_TESTS)
     )
     target_include_directories(dsp_graph_test PRIVATE src ViPERDSP ViPERDSP/include)
     target_link_libraries(dsp_graph_test PRIVATE ViPERDSP m)
+
+    add_executable(parameter_snapshot_test
+        tests/ParameterSnapshotTest.cpp
+        ViPERDSP/viper/ParameterSnapshot.cpp
+    )
+    target_include_directories(parameter_snapshot_test PRIVATE ViPERDSP ViPERDSP/include)
 endif()
 
 add_library(v4a_re SHARED

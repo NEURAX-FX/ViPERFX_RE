@@ -195,7 +195,8 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
         viper::audio::kMaxBlockFrames,
         graph_generation_ + 1,
     };
-    if (!graph_.Prepare(graph_config)) {
+    const viper::ViPERParams parameter_snapshot = graph_.Engine().CurrentParams();
+    if (!graph_.Prepare(graph_config, parameter_snapshot)) {
         SetDisableReason(DisableReason::UNKNOWN, "Failed to prepare DSP graph");
         return;
     }
