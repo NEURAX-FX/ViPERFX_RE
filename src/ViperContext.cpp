@@ -23,10 +23,10 @@ ViperContext::ViperContext() :
     config_({}),
     disable_reason_(DisableReason::NONE),
     buffer_(std::vector<float>()),
+    dry_buffer_(std::vector<float>()),
     buffer_frame_count_(0),
     enable_(false),
-    has_processed_(false),
-    fade_in_remaining_(0) {
+    has_processed_(false) {
     VIPER_LOGI("ViperContext created");
 }
 
@@ -175,11 +175,31 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
         viper::audio::kMaxBlockFrames * viper::audio::kChannelCount,
         0.0F
     );
+    dry_buffer_.assign(
+        viper::audio::kMaxBlockFrames * viper::audio::kChannelCount,
+        0.0F
+    );
     buffer_frame_count_ = viper::audio::kMaxBlockFrames;
+    if (!graph_crossfade_.Prepare(config_.input_cfg.sampling_rate)) {
+        SetDisableReason(
+            DisableReason::INVALID_SAMPLING_RATE,
+            "Failed to prepare graph transition"
+        );
+        return;
+    }
+    graph_crossfade_.StartDryToWet();
 
     // ViPER
-    viper_.SetSamplingRate(config_.input_cfg.sampling_rate);
-    viper_.ResetAllEffects();
+    const viper::audio::DspGraphConfig graph_config{
+        config_.input_cfg.sampling_rate,
+        viper::audio::kMaxBlockFrames,
+        graph_generation_ + 1,
+    };
+    if (!graph_.Prepare(graph_config)) {
+        SetDisableReason(DisableReason::UNKNOWN, "Failed to prepare DSP graph");
+        return;
+    }
+    graph_generation_ = graph_config.generation;
     if (!analyzer_.Configure(config_.input_cfg.sampling_rate, 2)) {
         VIPER_LOGE("Failed to configure audio analyzer");
     }
@@ -197,15 +217,17 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
     const int *int_values = reinterpret_cast<int *>(cmd_param->data + offset);
     switch (cmd_param->vsize) {
         case sizeof(int): {
-            viper_.DispatchRawParam(param, int_values[0], 0, 0, 0, nullptr);
+            graph_.Engine().DispatchRawParam(param, int_values[0], 0, 0, 0, nullptr);
             return 0;
         }
         case sizeof(int) * 2: {
-            viper_.DispatchRawParam(param, int_values[0], int_values[1], 0, 0, nullptr);
+            graph_.Engine().DispatchRawParam(
+                param, int_values[0], int_values[1], 0, 0, nullptr
+            );
             return 0;
         }
         case sizeof(int) * 3: {
-            viper_.DispatchRawParam(
+            graph_.Engine().DispatchRawParam(
                 param, int_values[0], int_values[1], int_values[2], 0, nullptr
             );
             return 0;
@@ -217,7 +239,7 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
             const auto arr = reinterpret_cast<signed char *>(
                 cmd_param->data + offset + sizeof(uint32_t)
             );
-            viper_.DispatchRawParam(param, 0, 0, 0, arr_size, arr);
+            graph_.Engine().DispatchRawParam(param, 0, 0, 0, arr_size, arr);
             return 0;
         }
         case 8192: {
@@ -227,7 +249,7 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
             const auto arr = reinterpret_cast<signed char *>(
                 cmd_param->data + offset + sizeof(int) + sizeof(uint32_t)
             );
-            viper_.DispatchRawParam(param, value1, 0, 0, arr_size, arr);
+            graph_.Engine().DispatchRawParam(param, value1, 0, 0, arr_size, arr);
             return 0;
         }
         default: {
@@ -265,7 +287,7 @@ int32_t ViperContext::HandleGetParam(
             return 0;
         }
         case kParamGetStreaming: {
-            const uint64_t frames = viper_.GetProcessedFrames();
+            const uint64_t frames = graph_.Engine().GetProcessedFrames();
             const int32_t is_processing =
                 (frames != last_streaming_frames_ && frames > 0) ? 1 : 0;
             last_streaming_frames_ = frames;
@@ -281,7 +303,7 @@ int32_t ViperContext::HandleGetParam(
             reply_param->status = 0;
             reply_param->vsize = sizeof(uint32_t);
             *reinterpret_cast<uint32_t *>(reply_param->data + offset) =
-                viper_.GetSamplingRate();
+                graph_.Engine().GetSamplingRate();
             *reply_size =
                 sizeof(effect_param_t) + reply_param->psize + offset + reply_param->vsize;
             return 0;
@@ -290,7 +312,7 @@ int32_t ViperContext::HandleGetParam(
             reply_param->status = 0;
             reply_param->vsize = sizeof(uint32_t);
             *reinterpret_cast<uint32_t *>(reply_param->data + offset) =
-                viper_.GetConvolverKernelID();
+                graph_.Engine().GetConvolverKernelID();
             *reply_size =
                 sizeof(effect_param_t) + reply_param->psize + offset + reply_param->vsize;
             return 0;
@@ -396,7 +418,7 @@ int32_t ViperContext::HandleCommand(
                 );
                 return -EINVAL;
             }
-            viper_.ResetAllEffects();
+            graph_.Reset();
             analyzer_.Reset();
             SET(int32_t, reply_data, 0);
             return 0;
@@ -412,13 +434,16 @@ int32_t ViperContext::HandleCommand(
                 );
                 return -EINVAL;
             }
-            viper_.ResetAllEffects();
+            graph_.Reset();
             analyzer_.Reset();
             if (!buffer_.empty()) {
                 memset(buffer_.data(), 0, buffer_.size() * sizeof(float));
             }
+            if (!dry_buffer_.empty()) {
+                memset(dry_buffer_.data(), 0, dry_buffer_.size() * sizeof(float));
+            }
             has_processed_ = false;
-            fade_in_remaining_ = 0;
+            graph_crossfade_.Reset();
             enable_ = true;
             SET(int32_t, reply_data, 0);
             return 0;
@@ -544,13 +569,13 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
         )
                            .count();
         if (elapsed > 100) {
-            viper_.ResetAllEffects();
+            graph_.Reset();
             analyzer_.Reset();
-            fade_in_remaining_ = 128;
+            graph_crossfade_.StartDryToWet();
         }
     } else {
-        viper_.ResetAllEffects();
-        fade_in_remaining_ = 128;
+        graph_.Reset();
+        graph_crossfade_.StartDryToWet();
         has_processed_ = true;
     }
     last_process_time_ = now;
@@ -578,22 +603,19 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
         SetDisableReason(DisableReason::INVALID_FORMAT, "Failed to decode input PCM");
         return -EINVAL;
     }
+    std::memcpy(
+        dry_buffer_.data(),
+        buffer_.data(),
+        frame_count * viper::audio::kChannelCount * sizeof(float)
+    );
 
-    // TODO: Remove fade-in.
-    if (fade_in_remaining_ > 0) {
-        uint32_t fade_samples =
-            fade_in_remaining_ < frame_count ? fade_in_remaining_ : frame_count;
-        for (uint32_t i = 0; i < fade_samples; i++) {
-            float gain = static_cast<float>(128 - fade_in_remaining_ + i) / 128.0f;
-            buffer_[i * 2] *= gain;
-            buffer_[i * 2 + 1] *= gain;
-        }
-        fade_in_remaining_ -= fade_samples;
+    if (!graph_.Process(buffer_.data(), frame_count)) {
+        SetDisableReason(DisableReason::INVALID_FRAME_COUNT, "DSP graph rejected block");
+        return -EINVAL;
     }
-
-    viper_.Process(buffer_, frame_count);
+    graph_crossfade_.Apply(buffer_.data(), dry_buffer_.data(), frame_count);
     analyzer_.Push(buffer_.data(), frame_count);
-    const auto compressor_meters = viper_.GetCompressorGainReductionDb();
+    const auto compressor_meters = graph_.Engine().GetCompressorGainReductionDb();
     for (size_t i = 0; i < compressor_meters.size(); ++i) {
         analyzer_.SetMeter(i, compressor_meters[i]);
     }

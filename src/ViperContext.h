@@ -1,7 +1,8 @@
 #pragma once
 
+#include "DspGraph.h"
+#include "GraphCrossfade.h"
 #include "essential.h"
-#include "viper/ViPER.h"
 #include "viper/effects/AudioAnalyzer.h"
 #include <chrono>
 #include <string>
@@ -36,18 +37,20 @@ private:
 
     // Processing buffer
     std::vector<float> buffer_;
+    std::vector<float> dry_buffer_;
     size_t buffer_frame_count_;
+    viper::audio::GraphCrossfade graph_crossfade_;
 
     // Viper
     bool enable_;
-    ViPER viper_;
+    viper::audio::DspGraph graph_;
     viper::AudioAnalyzer analyzer_;
+    uint64_t graph_generation_ = 0;
     uint64_t last_streaming_frames_ = 0;
 
     // Stream discontinuity detection
     std::chrono::steady_clock::time_point last_process_time_;
     bool has_processed_;
-    uint32_t fade_in_remaining_;
 
     static void CopyBufferConfig(buffer_config_t *dest, buffer_config_t *src);
     void HandleSetConfig(effect_config_t *new_config);

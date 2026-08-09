@@ -36,10 +36,27 @@ if(BUILD_ANALYZER_TESTS)
         src/AudioFormat.cpp
     )
     target_include_directories(audio_format_test PRIVATE src)
+
+    add_executable(graph_crossfade_test
+        tests/GraphCrossfadeTest.cpp
+        src/AudioFormat.cpp
+        src/GraphCrossfade.cpp
+    )
+    target_include_directories(graph_crossfade_test PRIVATE src)
+
+    add_executable(dsp_graph_test
+        tests/DspGraphTest.cpp
+        src/AudioFormat.cpp
+        src/DspGraph.cpp
+    )
+    target_include_directories(dsp_graph_test PRIVATE src ViPERDSP ViPERDSP/include)
+    target_link_libraries(dsp_graph_test PRIVATE ViPERDSP m)
 endif()
 
 add_library(v4a_re SHARED
     src/AudioFormat.cpp
+    src/DspGraph.cpp
+    src/GraphCrossfade.cpp
     src/ViPER4Android.cpp
     src/ViperContext.cpp
 )
