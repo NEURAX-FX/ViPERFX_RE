@@ -1,6 +1,7 @@
 #include "DspGraph.h"
 #include "ViPERParams.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -38,6 +39,12 @@ bool TestPrepareAndProcessAt384Khz() {
     if (!Check(graph.IsPrepared(), "prepared flag")) return false;
     if (!Check(graph.Config().sample_rate == 384000, "retain sample rate")) return false;
     if (!Check(graph.Config().generation == 42, "retain generation")) return false;
+    if (!Check(
+            graph.Transition().TransitionFrames() == 1920,
+            "prepare 5 ms transition table at graph rate"
+        )) {
+        return false;
+    }
 
     std::vector<float> silence(256 * 2, 0.0F);
     if (!Check(graph.Process(silence.data(), 256), "process valid block")) return false;
@@ -78,12 +85,32 @@ bool TestRawParametersSurviveGraphRebuild() {
         && Check(std::fabs(restored.reverb.wet - 0.4F) < 1.0e-6F, "restore disabled effect value");
 }
 
+bool TestPrepareClearsPreviousDdcResource() {
+    viper::ViPERParams params{};
+    params.ddc.enable = true;
+    viper::audio::DspGraph graph;
+    if (!graph.Prepare({48000, 8192, 1}, params)) return false;
+    const std::array<viper::BiquadSection, 1> coefficients{
+        viper::BiquadSection{0.5F, 0.0F, 0.0F, 0.0F, 0.0F},
+    };
+    graph.Engine().LoadDdcCoefficients(coefficients.data(), coefficients.data(), 1);
+    if (!graph.Prepare({48000, 8192, 2}, params)) return false;
+
+    std::vector<float> frames(1024, 0.5F);
+    if (!graph.Process(frames.data(), 512)) return false;
+    return Check(
+        std::fabs(frames.back() - 0.5F) < 1.0e-6F,
+        "reprepared graph does not retain old DDC coefficients"
+    );
+}
+
 } // namespace
 
 int main() {
     if (!TestConfigurationValidation()) return 1;
     if (!TestPrepareAndProcessAt384Khz()) return 1;
     if (!TestRawParametersSurviveGraphRebuild()) return 1;
+    if (!TestPrepareClearsPreviousDdcResource()) return 1;
     std::puts("DspGraph tests passed");
     return 0;
 }

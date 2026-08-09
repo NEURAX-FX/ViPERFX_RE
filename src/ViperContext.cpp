@@ -24,6 +24,7 @@ ViperContext::ViperContext() :
     disable_reason_(DisableReason::NONE),
     buffer_(std::vector<float>()),
     dry_buffer_(std::vector<float>()),
+    previous_buffer_(std::vector<float>()),
     buffer_frame_count_(0),
     enable_(false),
     has_processed_(false) {
@@ -179,15 +180,11 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
         viper::audio::kMaxBlockFrames * viper::audio::kChannelCount,
         0.0F
     );
+    previous_buffer_.assign(
+        viper::audio::kMaxBlockFrames * viper::audio::kChannelCount,
+        0.0F
+    );
     buffer_frame_count_ = viper::audio::kMaxBlockFrames;
-    if (!graph_crossfade_.Prepare(config_.input_cfg.sampling_rate)) {
-        SetDisableReason(
-            DisableReason::INVALID_SAMPLING_RATE,
-            "Failed to prepare graph transition"
-        );
-        return;
-    }
-    graph_crossfade_.StartDryToWet();
 
     // ViPER
     const viper::audio::DspGraphConfig graph_config{
@@ -195,15 +192,76 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
         viper::audio::kMaxBlockFrames,
         graph_generation_ + 1,
     };
-    const viper::ViPERParams parameter_snapshot = graph_.Engine().CurrentParams();
-    if (!graph_.Prepare(graph_config, parameter_snapshot)) {
+    const bool prepared = graph_slots_.Active() == nullptr
+        ? graph_slots_.PrepareInitial(graph_config, parameter_snapshot_, resources_)
+        : graph_slots_.PreparePending(graph_config, parameter_snapshot_, resources_);
+    if (!prepared) {
         SetDisableReason(DisableReason::UNKNOWN, "Failed to prepare DSP graph");
         return;
     }
     graph_generation_ = graph_config.generation;
+    if (graph_slots_.Pending() == nullptr) {
+        graph_slots_.Active()->Transition().StartDryToWet();
+    }
     if (!analyzer_.Configure(config_.input_cfg.sampling_rate, 2)) {
         VIPER_LOGE("Failed to configure audio analyzer");
     }
+}
+
+void ViperContext::DispatchRawParam(
+    int param,
+    int val1,
+    int val2,
+    int val3,
+    uint32_t arr_size,
+    signed char *arr
+) {
+    const viper::RawParamUpdate parameter_result = viper::UpdateParameterSnapshot(
+        parameter_snapshot_, param, val1, val2, val3, arr_size, arr
+    );
+    resources_.CaptureRaw(param, val1, val2, val3, arr_size, arr);
+    if (parameter_result == viper::RawParamUpdate::UPDATED) {
+        parameter_mailbox_.Publish(parameter_snapshot_);
+        return;
+    }
+
+    std::array<viper::audio::DspGraph *, 3> graphs{
+        graph_slots_.Active(),
+        graph_slots_.Pending(),
+        graph_slots_.Previous(),
+    };
+    for (size_t i = 0; i < graphs.size(); ++i) {
+        if (graphs[i] == nullptr) continue;
+        bool duplicate = false;
+        for (size_t previous = 0; previous < i; ++previous) {
+            if (graphs[previous] == graphs[i]) duplicate = true;
+        }
+        if (!duplicate) {
+            graphs[i]->Engine().DispatchRawParam(
+                param, val1, val2, val3, arr_size, arr
+            );
+        }
+    }
+}
+
+void ViperContext::ResetGraphs() noexcept {
+    std::array<viper::audio::DspGraph *, 3> graphs{
+        graph_slots_.Active(),
+        graph_slots_.Pending(),
+        graph_slots_.Previous(),
+    };
+    for (size_t i = 0; i < graphs.size(); ++i) {
+        if (graphs[i] == nullptr) continue;
+        bool duplicate = false;
+        for (size_t previous = 0; previous < i; ++previous) {
+            if (graphs[previous] == graphs[i]) duplicate = true;
+        }
+        if (!duplicate) {
+            graphs[i]->Reset();
+            graphs[i]->Transition().Reset();
+        }
+    }
+    graph_slots_.ReleasePrevious();
 }
 
 int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data) {
@@ -218,17 +276,15 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
     const int *int_values = reinterpret_cast<int *>(cmd_param->data + offset);
     switch (cmd_param->vsize) {
         case sizeof(int): {
-            graph_.Engine().DispatchRawParam(param, int_values[0], 0, 0, 0, nullptr);
+            DispatchRawParam(param, int_values[0], 0, 0, 0, nullptr);
             return 0;
         }
         case sizeof(int) * 2: {
-            graph_.Engine().DispatchRawParam(
-                param, int_values[0], int_values[1], 0, 0, nullptr
-            );
+            DispatchRawParam(param, int_values[0], int_values[1], 0, 0, nullptr);
             return 0;
         }
         case sizeof(int) * 3: {
-            graph_.Engine().DispatchRawParam(
+            DispatchRawParam(
                 param, int_values[0], int_values[1], int_values[2], 0, nullptr
             );
             return 0;
@@ -240,7 +296,7 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
             const auto arr = reinterpret_cast<signed char *>(
                 cmd_param->data + offset + sizeof(uint32_t)
             );
-            graph_.Engine().DispatchRawParam(param, 0, 0, 0, arr_size, arr);
+            DispatchRawParam(param, 0, 0, 0, arr_size, arr);
             return 0;
         }
         case 8192: {
@@ -250,7 +306,7 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
             const auto arr = reinterpret_cast<signed char *>(
                 cmd_param->data + offset + sizeof(int) + sizeof(uint32_t)
             );
-            graph_.Engine().DispatchRawParam(param, value1, 0, 0, arr_size, arr);
+            DispatchRawParam(param, value1, 0, 0, arr_size, arr);
             return 0;
         }
         default: {
@@ -288,7 +344,10 @@ int32_t ViperContext::HandleGetParam(
             return 0;
         }
         case kParamGetStreaming: {
-            const uint64_t frames = graph_.Engine().GetProcessedFrames();
+            const auto *active = graph_slots_.Active();
+            const uint64_t frames = active != nullptr
+                ? active->Engine().GetProcessedFrames()
+                : 0;
             const int32_t is_processing =
                 (frames != last_streaming_frames_ && frames > 0) ? 1 : 0;
             last_streaming_frames_ = frames;
@@ -304,7 +363,9 @@ int32_t ViperContext::HandleGetParam(
             reply_param->status = 0;
             reply_param->vsize = sizeof(uint32_t);
             *reinterpret_cast<uint32_t *>(reply_param->data + offset) =
-                graph_.Engine().GetSamplingRate();
+                graph_slots_.Active() != nullptr
+                    ? graph_slots_.Active()->Engine().GetSamplingRate()
+                    : 0;
             *reply_size =
                 sizeof(effect_param_t) + reply_param->psize + offset + reply_param->vsize;
             return 0;
@@ -313,7 +374,9 @@ int32_t ViperContext::HandleGetParam(
             reply_param->status = 0;
             reply_param->vsize = sizeof(uint32_t);
             *reinterpret_cast<uint32_t *>(reply_param->data + offset) =
-                graph_.Engine().GetConvolverKernelID();
+                graph_slots_.Active() != nullptr
+                    ? graph_slots_.Active()->Engine().GetConvolverKernelID()
+                    : 0;
             *reply_size =
                 sizeof(effect_param_t) + reply_param->psize + offset + reply_param->vsize;
             return 0;
@@ -419,7 +482,7 @@ int32_t ViperContext::HandleCommand(
                 );
                 return -EINVAL;
             }
-            graph_.Reset();
+            ResetGraphs();
             analyzer_.Reset();
             SET(int32_t, reply_data, 0);
             return 0;
@@ -435,7 +498,7 @@ int32_t ViperContext::HandleCommand(
                 );
                 return -EINVAL;
             }
-            graph_.Reset();
+            ResetGraphs();
             analyzer_.Reset();
             if (!buffer_.empty()) {
                 memset(buffer_.data(), 0, buffer_.size() * sizeof(float));
@@ -443,8 +506,10 @@ int32_t ViperContext::HandleCommand(
             if (!dry_buffer_.empty()) {
                 memset(dry_buffer_.data(), 0, dry_buffer_.size() * sizeof(float));
             }
+            if (!previous_buffer_.empty()) {
+                memset(previous_buffer_.data(), 0, previous_buffer_.size() * sizeof(float));
+            }
             has_processed_ = false;
-            graph_crossfade_.Reset();
             enable_ = true;
             SET(int32_t, reply_data, 0);
             return 0;
@@ -563,6 +628,23 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
     asm volatile("vmsr fpscr, %0" ::"r"(orig_fpscr | (1 << 24)));
 #endif
 
+    const auto swap = graph_slots_.ConsumePending();
+    viper::audio::DspGraph *active_graph = swap.active;
+    if (active_graph == nullptr) return -EINVAL;
+    if (swap.changed) {
+        active_graph->Transition().StartDryToWet();
+        if (swap.sample_rate_changed) graph_slots_.ReleasePrevious();
+    }
+    viper::ViPERParams latest_params{};
+    if (parameter_mailbox_.ConsumeLatest(
+            applied_parameter_generation_, latest_params
+        )) {
+        active_graph->Engine().ApplyParams(latest_params);
+        if (graph_slots_.Previous() != nullptr) {
+            graph_slots_.Previous()->Engine().ApplyParams(latest_params);
+        }
+    }
+
     auto now = std::chrono::steady_clock::now();
     if (has_processed_) {
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -570,13 +652,15 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
         )
                            .count();
         if (elapsed > 100) {
-            graph_.Reset();
+            active_graph->Reset();
             analyzer_.Reset();
-            graph_crossfade_.StartDryToWet();
+            active_graph->Transition().StartDryToWet();
+            graph_slots_.ReleasePrevious();
         }
     } else {
-        graph_.Reset();
-        graph_crossfade_.StartDryToWet();
+        active_graph->Reset();
+        active_graph->Transition().StartDryToWet();
+        graph_slots_.ReleasePrevious();
         has_processed_ = true;
     }
     last_process_time_ = now;
@@ -610,13 +694,36 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
         frame_count * viper::audio::kChannelCount * sizeof(float)
     );
 
-    if (!graph_.Process(buffer_.data(), frame_count)) {
+    viper::audio::DspGraph *previous_graph = graph_slots_.Previous();
+    if (previous_graph != nullptr) {
+        std::memcpy(
+            previous_buffer_.data(),
+            dry_buffer_.data(),
+            frame_count * viper::audio::kChannelCount * sizeof(float)
+        );
+    }
+
+    if (!active_graph->Process(buffer_.data(), frame_count)) {
         SetDisableReason(DisableReason::INVALID_FRAME_COUNT, "DSP graph rejected block");
         return -EINVAL;
     }
-    graph_crossfade_.Apply(buffer_.data(), dry_buffer_.data(), frame_count);
+    if (previous_graph != nullptr) {
+        if (!previous_graph->Process(previous_buffer_.data(), frame_count)) {
+            SetDisableReason(
+                DisableReason::INVALID_FRAME_COUNT,
+                "Previous DSP graph rejected block"
+            );
+            return -EINVAL;
+        }
+        active_graph->Transition().Apply(
+            buffer_.data(), previous_buffer_.data(), frame_count
+        );
+        if (!active_graph->Transition().IsActive()) graph_slots_.ReleasePrevious();
+    } else {
+        active_graph->Transition().Apply(buffer_.data(), dry_buffer_.data(), frame_count);
+    }
     analyzer_.Push(buffer_.data(), frame_count);
-    const auto compressor_meters = graph_.Engine().GetCompressorGainReductionDb();
+    const auto compressor_meters = active_graph->Engine().GetCompressorGainReductionDb();
     for (size_t i = 0; i < compressor_meters.size(); ++i) {
         analyzer_.SetMeter(i, compressor_meters[i]);
     }

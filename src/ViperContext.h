@@ -1,8 +1,10 @@
 #pragma once
 
-#include "DspGraph.h"
-#include "GraphCrossfade.h"
+#include "DspGraphSlots.h"
+#include "DspResources.h"
+#include "ParameterMailbox.h"
 #include "essential.h"
+#include "viper/ParameterSnapshot.h"
 #include "viper/effects/AudioAnalyzer.h"
 #include <chrono>
 #include <string>
@@ -38,12 +40,16 @@ private:
     // Processing buffer
     std::vector<float> buffer_;
     std::vector<float> dry_buffer_;
+    std::vector<float> previous_buffer_;
     size_t buffer_frame_count_;
-    viper::audio::GraphCrossfade graph_crossfade_;
 
     // Viper
     bool enable_;
-    viper::audio::DspGraph graph_;
+    viper::audio::DspGraphSlots graph_slots_;
+    viper::audio::DspResources resources_;
+    viper::audio::ParameterMailbox parameter_mailbox_;
+    viper::ViPERParams parameter_snapshot_{};
+    uint64_t applied_parameter_generation_ = 0;
     viper::AudioAnalyzer analyzer_;
     uint64_t graph_generation_ = 0;
     uint64_t last_streaming_frames_ = 0;
@@ -59,6 +65,16 @@ private:
     int32_t HandleGetParam(
         effect_param_t *cmd_param, effect_param_t *reply_param, uint32_t *reply_size
     );
+
+    void DispatchRawParam(
+        int param,
+        int val1,
+        int val2,
+        int val3,
+        uint32_t arr_size,
+        signed char *arr
+    );
+    void ResetGraphs() noexcept;
 
     void SetDisableReason(DisableReason reason);
     void SetDisableReason(DisableReason reason, std::string message);

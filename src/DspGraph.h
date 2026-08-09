@@ -1,6 +1,7 @@
 #ifndef VIPER_DSP_GRAPH_H
 #define VIPER_DSP_GRAPH_H
 
+#include "GraphCrossfade.h"
 #include "viper/ViPER.h"
 #include <cstddef>
 #include <cstdint>
@@ -23,11 +24,13 @@ public:
     ViPER &Engine() noexcept;
     const ViPER &Engine() const noexcept;
     const DspGraphConfig &Config() const noexcept;
+    GraphCrossfade &Transition() noexcept;
     bool IsPrepared() const noexcept;
 
 private:
     DspGraphConfig config_{};
     ViPER engine_{};
+    GraphCrossfade transition_{};
     bool prepared_ = false;
 };
 

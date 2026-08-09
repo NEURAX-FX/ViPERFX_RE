@@ -48,6 +48,7 @@ if(BUILD_ANALYZER_TESTS)
         tests/DspGraphTest.cpp
         src/AudioFormat.cpp
         src/DspGraph.cpp
+        src/GraphCrossfade.cpp
     )
     target_include_directories(dsp_graph_test PRIVATE src ViPERDSP ViPERDSP/include)
     target_link_libraries(dsp_graph_test PRIVATE ViPERDSP m)
@@ -57,12 +58,42 @@ if(BUILD_ANALYZER_TESTS)
         ViPERDSP/viper/ParameterSnapshot.cpp
     )
     target_include_directories(parameter_snapshot_test PRIVATE ViPERDSP ViPERDSP/include)
+
+    add_executable(dsp_resources_test
+        tests/DspResourcesTest.cpp
+        src/AudioFormat.cpp
+        src/DspGraph.cpp
+        src/DspResources.cpp
+        src/GraphCrossfade.cpp
+    )
+    target_include_directories(dsp_resources_test PRIVATE src ViPERDSP ViPERDSP/include)
+    target_link_libraries(dsp_resources_test PRIVATE ViPERDSP m)
+
+    add_executable(dsp_graph_slots_test
+        tests/DspGraphSlotsTest.cpp
+        src/AudioFormat.cpp
+        src/DspGraph.cpp
+        src/DspGraphSlots.cpp
+        src/DspResources.cpp
+        src/GraphCrossfade.cpp
+    )
+    target_include_directories(dsp_graph_slots_test PRIVATE src ViPERDSP ViPERDSP/include)
+    target_link_libraries(dsp_graph_slots_test PRIVATE ViPERDSP m)
+
+    add_executable(parameter_mailbox_test
+        tests/ParameterMailboxTest.cpp
+        src/ParameterMailbox.cpp
+    )
+    target_include_directories(parameter_mailbox_test PRIVATE src ViPERDSP/include)
 endif()
 
 add_library(v4a_re SHARED
     src/AudioFormat.cpp
     src/DspGraph.cpp
+    src/DspGraphSlots.cpp
     src/GraphCrossfade.cpp
+    src/ParameterMailbox.cpp
+    src/DspResources.cpp
     src/ViPER4Android.cpp
     src/ViperContext.cpp
 )

@@ -47,6 +47,12 @@ bool DspGraph::Prepare(
         prepared_ = false;
         return false;
     }
+    if (!transition_.Prepare(config.sample_rate)) {
+        prepared_ = false;
+        return false;
+    }
+    engine_.UnloadConvolverKernel();
+    engine_.UnloadDdcCoefficients();
     engine_.SetSamplingRate(config.sample_rate);
     engine_.ResetAllEffects();
     ApplySnapshot(engine_, snapshot);
@@ -78,6 +84,10 @@ const ViPER &DspGraph::Engine() const noexcept {
 
 const DspGraphConfig &DspGraph::Config() const noexcept {
     return config_;
+}
+
+GraphCrossfade &DspGraph::Transition() noexcept {
+    return transition_;
 }
 
 bool DspGraph::IsPrepared() const noexcept {
