@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 add_library(IEMDSP STATIC
     upstream/efficientSHvanilla.cpp
+    resources/generated/IemResources.cpp
     src/AlignedPlanarBuffer.cpp
     src/Grain.cpp
     src/GranularEncoder.cpp
@@ -20,6 +21,7 @@ add_library(IEMDSP STATIC
 target_include_directories(IEMDSP
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/resources/generated
 )
 
 target_compile_features(IEMDSP PUBLIC cxx_std_17)

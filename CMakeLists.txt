@@ -27,6 +27,31 @@ add_subdirectory(ViPERDSP)
 
 if(BUILD_ANALYZER_TESTS)
     enable_testing()
+
+    add_executable(iem_asset_compiler
+        tools/IemAssetCompiler.cpp
+        tools/Sha256.cpp
+    )
+    target_include_directories(iem_asset_compiler PRIVATE tools)
+    target_link_libraries(iem_asset_compiler PRIVATE IEMDSP)
+
+    add_executable(iem_asset_compiler_test
+        tests/IemAssetCompilerTest.cpp
+        tools/IemAssetCompiler.cpp
+        tools/Sha256.cpp
+    )
+    target_compile_definitions(iem_asset_compiler_test PRIVATE
+        IEM_ASSET_COMPILER_NO_MAIN=1
+        IEM_ASSET_SOURCE_DIR="${CMAKE_SOURCE_DIR}/IEMDSP/resources/source"
+        IEM_GENERATED_RESOURCE_DIR="${CMAKE_SOURCE_DIR}/IEMDSP/resources/generated"
+    )
+    target_include_directories(iem_asset_compiler_test PRIVATE
+        tools
+        IEMDSP/resources/generated
+    )
+    target_link_libraries(iem_asset_compiler_test PRIVATE IEMDSP)
+    add_test(NAME iem_asset_compiler_test COMMAND iem_asset_compiler_test)
+
     find_package(Threads REQUIRED)
     add_executable(audio_analyzer_test
         tests/AudioAnalyzerTest.cpp

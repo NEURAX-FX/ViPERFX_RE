@@ -198,9 +198,9 @@ The decoder selects exactly one prepared IR matrix:
 
 | Order | Inputs | Source resource | Source format |
 |---|---:|---|---|
-| 1 | 4 | `irsOrd1.wav` | 44.1 kHz, 8 channels, 236 frames |
-| 2 | 9 | `irsOrd2.wav` | 44.1 kHz, 18 channels, 236 frames |
-| 3 | 16 | `irsOrd3.wav` | 44.1 kHz, 32 channels, 236 frames |
+| 1 | 4 | `irsOrd1.wav` | 44.1 kHz, 4 channels, 236 frames, PCM16 |
+| 2 | 9 | `irsOrd2.wav` | 44.1 kHz, 9 channels, 236 frames, PCM16 |
+| 3 | 16 | `irsOrd3.wav` | 44.1 kHz, 16 channels, 236 frames, PCM16 |
 
 Pinned source SHA-256 values:
 
@@ -210,22 +210,22 @@ Pinned source SHA-256 values:
 
 The asset generator validates hash, PCM format, sample rate, channel count, and frame count, resamples deterministically to 96 kHz, and emits immutable float resources plus a machine-readable manifest. Decoder channel mapping is covered by per-input impulse tests.
 
-The generated `N -> 2` matrix must reproduce the pinned BinauralDecoder boundary exactly rather than treating all `2N` WAV channels as an already interleaved left/right matrix:
+The generated `N -> 2` matrix must reproduce the pinned BinauralDecoder Mid/Side boundary exactly rather than treating the `N` WAV channels as ordinary mono-to-stereo filters:
 
-- read the first `N = (order + 1)^2` source filters, matching the upstream destination buffer;
+- read all `N = (order + 1)^2` source filters;
 - for ACN channel `(n, m)`, bake the upstream SN3D-to-N3D factor `sqrt(2n + 1)` into that channel's filter;
 - apply the upstream decoder gain of 0.3;
 - bake the upstream 44.1-to-96 kHz resampling compensation factor `44100 / 96000` after deterministic resampling;
 - channels with `m >= 0` are Mid filters and contribute with the same sign to left and right;
 - channels with `m < 0` are Side filters and contribute positive to left and negative to right.
 
-This produces a prepared left/right IR for every ACN input channel. The remaining source WAV channels are retained and hash-validated as provenance but are not decoded directly, matching the pinned upstream implementation.
+This produces a prepared left/right IR for every ACN input channel.
 
 Resource attribution must preserve the upstream references: Benjamin Bernschuetz's Neumann KU100 far-field HRIR/HRTF compilation and the magnitude-least-squares rendering work by Schoerkhuber, Zaunschirm, and Hoeldrich. These citations appear in the generated manifest and the App license surface.
 
 ### 4.8 Headphone compensation
 
-All 23 upstream EQ WAV files are embedded. They are 48 kHz mono, 236 frames in the pinned source and are deterministically converted to 96 kHz. The manifest contains every source hash, the displayed model name, and the upstream attribution to Benjamin Bernschuetz.
+All 23 upstream EQ WAV files are embedded. They are 48 kHz stereo float32, 2048 frames in the pinned source and are deterministically converted to 96 kHz stereo, 4096 frames. Left and right correction filters remain channel-specific. The manifest contains every source hash, the displayed model name, and the upstream attribution to Benjamin Bernschuetz.
 
 The selectable models are:
 
