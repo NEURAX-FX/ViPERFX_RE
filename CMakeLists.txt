@@ -132,6 +132,10 @@ if(BUILD_ANALYZER_TESTS)
         COMMAND iem_spherical_harmonics_test
     )
 
+    add_executable(iem_encoder_test tests/IemEncoderTest.cpp)
+    target_link_libraries(iem_encoder_test PRIVATE IEMDSP)
+    add_test(NAME iem_encoder_test COMMAND iem_encoder_test)
+
     add_executable(iem_parameter_mailbox_test
         tests/IemParameterMailboxTest.cpp
         src/IemParameterMailbox.cpp
