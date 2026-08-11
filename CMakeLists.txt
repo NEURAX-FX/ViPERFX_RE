@@ -144,6 +144,12 @@ if(BUILD_ANALYZER_TESTS)
         COMMAND iem_granular_encoder_test
     )
 
+    add_executable(iem_scene_rotator_test
+        tests/IemSceneRotatorTest.cpp
+    )
+    target_link_libraries(iem_scene_rotator_test PRIVATE IEMDSP)
+    add_test(NAME iem_scene_rotator_test COMMAND iem_scene_rotator_test)
+
     add_executable(iem_parameter_mailbox_test
         tests/IemParameterMailboxTest.cpp
         src/IemParameterMailbox.cpp

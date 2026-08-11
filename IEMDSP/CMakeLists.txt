@@ -10,6 +10,7 @@ add_library(IEMDSP STATIC
     src/IemTelemetry.cpp
     src/MultiEncoder.cpp
     src/PlanarBlockScheduler.cpp
+    src/SceneRotator.cpp
     src/SphericalHarmonics.cpp
     src/StereoEncoder.cpp
     src/StreamingResampler.cpp
