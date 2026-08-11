@@ -52,6 +52,12 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_asset_compiler_test PRIVATE IEMDSP)
     add_test(NAME iem_asset_compiler_test COMMAND iem_asset_compiler_test)
 
+    add_executable(iem_ku100_decoder_test
+        tests/IemKu100DecoderTest.cpp
+    )
+    target_link_libraries(iem_ku100_decoder_test PRIVATE IEMDSP)
+    add_test(NAME iem_ku100_decoder_test COMMAND iem_ku100_decoder_test)
+
     find_package(Threads REQUIRED)
     add_executable(audio_analyzer_test
         tests/AudioAnalyzerTest.cpp

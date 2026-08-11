@@ -6,9 +6,11 @@ add_library(IEMDSP STATIC
     src/AlignedPlanarBuffer.cpp
     src/Grain.cpp
     src/GranularEncoder.cpp
+    src/HeadphoneEq.cpp
     src/IemEngine.cpp
     src/IemParams.cpp
     src/IemTelemetry.cpp
+    src/Ku100Decoder.cpp
     src/MultiEncoder.cpp
     src/PartitionedMatrixConvolver.cpp
     src/PlanarBlockScheduler.cpp
