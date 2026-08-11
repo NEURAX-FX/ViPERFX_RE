@@ -18,17 +18,19 @@ add_compile_options(
     -fno-unwind-tables -fno-asynchronous-unwind-tables
     -fvisibility=hidden -fvisibility-inlines-hidden)
 
+add_subdirectory(IEMDSP)
 add_subdirectory(ViPERDSP)
 
 if(BUILD_ANALYZER_TESTS)
     enable_testing()
+    find_package(Threads REQUIRED)
     add_executable(audio_analyzer_test
         tests/AudioAnalyzerTest.cpp
         ViPERDSP/viper/effects/AudioAnalyzer.cpp
         ViPERDSP/viper/utils/pffft.c
     )
     target_include_directories(audio_analyzer_test PRIVATE ViPERDSP src)
-    target_link_libraries(audio_analyzer_test PRIVATE m)
+    target_link_libraries(audio_analyzer_test PRIVATE IEMDSP m)
     add_test(NAME audio_analyzer_test COMMAND audio_analyzer_test)
 
     add_executable(audio_format_test
@@ -36,6 +38,7 @@ if(BUILD_ANALYZER_TESTS)
         src/AudioFormat.cpp
     )
     target_include_directories(audio_format_test PRIVATE src)
+    add_test(NAME audio_format_test COMMAND audio_format_test)
 
     add_executable(graph_crossfade_test
         tests/GraphCrossfadeTest.cpp
@@ -43,6 +46,7 @@ if(BUILD_ANALYZER_TESTS)
         src/GraphCrossfade.cpp
     )
     target_include_directories(graph_crossfade_test PRIVATE src)
+    add_test(NAME graph_crossfade_test COMMAND graph_crossfade_test)
 
     add_executable(dsp_graph_test
         tests/DspGraphTest.cpp
@@ -52,12 +56,14 @@ if(BUILD_ANALYZER_TESTS)
     )
     target_include_directories(dsp_graph_test PRIVATE src ViPERDSP ViPERDSP/include)
     target_link_libraries(dsp_graph_test PRIVATE ViPERDSP m)
+    add_test(NAME dsp_graph_test COMMAND dsp_graph_test)
 
     add_executable(parameter_snapshot_test
         tests/ParameterSnapshotTest.cpp
         ViPERDSP/viper/ParameterSnapshot.cpp
     )
     target_include_directories(parameter_snapshot_test PRIVATE ViPERDSP ViPERDSP/include)
+    add_test(NAME parameter_snapshot_test COMMAND parameter_snapshot_test)
 
     add_executable(dsp_resources_test
         tests/DspResourcesTest.cpp
@@ -68,6 +74,7 @@ if(BUILD_ANALYZER_TESTS)
     )
     target_include_directories(dsp_resources_test PRIVATE src ViPERDSP ViPERDSP/include)
     target_link_libraries(dsp_resources_test PRIVATE ViPERDSP m)
+    add_test(NAME dsp_resources_test COMMAND dsp_resources_test)
 
     add_executable(dsp_graph_slots_test
         tests/DspGraphSlotsTest.cpp
@@ -79,12 +86,111 @@ if(BUILD_ANALYZER_TESTS)
     )
     target_include_directories(dsp_graph_slots_test PRIVATE src ViPERDSP ViPERDSP/include)
     target_link_libraries(dsp_graph_slots_test PRIVATE ViPERDSP m)
+    add_test(NAME dsp_graph_slots_test COMMAND dsp_graph_slots_test)
 
     add_executable(parameter_mailbox_test
         tests/ParameterMailboxTest.cpp
         src/ParameterMailbox.cpp
     )
     target_include_directories(parameter_mailbox_test PRIVATE src ViPERDSP/include)
+    add_test(NAME parameter_mailbox_test COMMAND parameter_mailbox_test)
+
+    add_executable(matrix_convolver_test
+        tests/MatrixConvolverTest.cpp
+        ViPERDSP/viper/utils/MatrixConvolver.cpp
+        ViPERDSP/viper/utils/pffft.c
+    )
+    target_include_directories(matrix_convolver_test PRIVATE ViPERDSP)
+    target_link_libraries(matrix_convolver_test PRIVATE m)
+    add_test(NAME matrix_convolver_test COMMAND matrix_convolver_test)
+
+    add_executable(convolver_test tests/ConvolverTest.cpp)
+    target_include_directories(convolver_test PRIVATE ViPERDSP)
+    target_link_libraries(convolver_test PRIVATE ViPERDSP m)
+    add_test(NAME convolver_test COMMAND convolver_test)
+
+    add_executable(wav_reader_test tests/WavReaderTest.cpp)
+    target_include_directories(wav_reader_test PRIVATE ViPERDSP)
+    add_test(NAME wav_reader_test COMMAND wav_reader_test)
+
+    add_executable(iem_aligned_planar_buffer_test
+        tests/IemAlignedPlanarBufferTest.cpp
+    )
+    target_link_libraries(iem_aligned_planar_buffer_test PRIVATE IEMDSP)
+    add_test(NAME iem_aligned_planar_buffer_test
+        COMMAND iem_aligned_planar_buffer_test)
+
+    add_executable(iem_params_test tests/IemParamsTest.cpp)
+    target_link_libraries(iem_params_test PRIVATE IEMDSP)
+    add_test(NAME iem_params_test COMMAND iem_params_test)
+
+    add_executable(iem_spherical_harmonics_test
+        tests/IemSphericalHarmonicsTest.cpp
+    )
+    target_link_libraries(iem_spherical_harmonics_test PRIVATE IEMDSP)
+    add_test(NAME iem_spherical_harmonics_test
+        COMMAND iem_spherical_harmonics_test
+    )
+
+    add_executable(iem_parameter_mailbox_test
+        tests/IemParameterMailboxTest.cpp
+        src/IemParameterMailbox.cpp
+    )
+    target_include_directories(iem_parameter_mailbox_test PRIVATE src)
+    target_link_libraries(iem_parameter_mailbox_test PRIVATE
+        IEMDSP Threads::Threads)
+    add_test(NAME iem_parameter_mailbox_test
+        COMMAND iem_parameter_mailbox_test)
+
+    add_executable(iem_streaming_resampler_test
+        tests/IemStreamingResamplerTest.cpp
+    )
+    target_link_libraries(iem_streaming_resampler_test PRIVATE IEMDSP m)
+    add_test(NAME iem_streaming_resampler_test
+        COMMAND iem_streaming_resampler_test)
+
+    add_executable(iem_planar_block_scheduler_test
+        tests/IemPlanarBlockSchedulerTest.cpp
+    )
+    target_link_libraries(iem_planar_block_scheduler_test PRIVATE IEMDSP)
+    add_test(NAME iem_planar_block_scheduler_test
+        COMMAND iem_planar_block_scheduler_test)
+
+    add_executable(iem_engine_test tests/IemEngineTest.cpp)
+    target_link_libraries(iem_engine_test PRIVATE IEMDSP m)
+    add_test(NAME iem_engine_test COMMAND iem_engine_test)
+
+    add_executable(iem_graph_slots_test
+        tests/IemGraphSlotsTest.cpp
+        src/AudioFormat.cpp
+        src/GraphCrossfade.cpp
+        src/IemGraph.cpp
+        src/IemGraphSlots.cpp
+        src/IemResources.cpp
+    )
+    target_include_directories(iem_graph_slots_test PRIVATE src)
+    target_link_libraries(iem_graph_slots_test PRIVATE IEMDSP m)
+    add_test(NAME iem_graph_slots_test COMMAND iem_graph_slots_test)
+
+    add_executable(iem_context_test
+        tests/IemContextTest.cpp
+        src/AudioFormat.cpp
+        src/DspGraph.cpp
+        src/GraphCrossfade.cpp
+        src/IemContext.cpp
+        src/IemGraph.cpp
+        src/IemGraphSlots.cpp
+        src/IemParameterMailbox.cpp
+        src/IemResources.cpp
+    )
+    target_include_directories(iem_context_test PRIVATE src ViPERDSP ViPERDSP/include)
+    target_link_libraries(iem_context_test PRIVATE IEMDSP ViPERDSP m)
+    add_test(NAME iem_context_test COMMAND iem_context_test)
+
+    add_executable(iem_telemetry_test tests/IemTelemetryTest.cpp)
+    target_include_directories(iem_telemetry_test PRIVATE src ViPERDSP)
+    target_link_libraries(iem_telemetry_test PRIVATE IEMDSP Threads::Threads)
+    add_test(NAME iem_telemetry_test COMMAND iem_telemetry_test)
 endif()
 
 add_library(v4a_re SHARED
@@ -92,6 +198,11 @@ add_library(v4a_re SHARED
     src/DspGraph.cpp
     src/DspGraphSlots.cpp
     src/GraphCrossfade.cpp
+    src/IemGraph.cpp
+    src/IemGraphSlots.cpp
+    src/IemContext.cpp
+    src/IemParameterMailbox.cpp
+    src/IemResources.cpp
     src/ParameterMailbox.cpp
     src/DspResources.cpp
     src/ViPER4Android.cpp
@@ -103,7 +214,7 @@ target_include_directories(v4a_re PRIVATE
     src/include
 )
 
-target_link_libraries(v4a_re ViPERDSP log)
+target_link_libraries(v4a_re IEMDSP ViPERDSP log)
 
 target_compile_options(v4a_re PRIVATE
     -Wall -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function)
