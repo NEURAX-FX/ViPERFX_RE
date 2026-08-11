@@ -18,6 +18,10 @@ add_compile_options(
     -fno-unwind-tables -fno-asynchronous-unwind-tables
     -fvisibility=hidden -fvisibility-inlines-hidden)
 
+add_library(pffft_core STATIC ViPERDSP/viper/utils/pffft.c)
+target_include_directories(pffft_core PUBLIC ViPERDSP/viper/utils)
+target_link_libraries(pffft_core PUBLIC m)
+
 add_subdirectory(IEMDSP)
 add_subdirectory(ViPERDSP)
 
@@ -27,10 +31,9 @@ if(BUILD_ANALYZER_TESTS)
     add_executable(audio_analyzer_test
         tests/AudioAnalyzerTest.cpp
         ViPERDSP/viper/effects/AudioAnalyzer.cpp
-        ViPERDSP/viper/utils/pffft.c
     )
     target_include_directories(audio_analyzer_test PRIVATE ViPERDSP src)
-    target_link_libraries(audio_analyzer_test PRIVATE IEMDSP m)
+    target_link_libraries(audio_analyzer_test PRIVATE IEMDSP pffft_core m)
     add_test(NAME audio_analyzer_test COMMAND audio_analyzer_test)
 
     add_executable(audio_format_test
@@ -98,10 +101,9 @@ if(BUILD_ANALYZER_TESTS)
     add_executable(matrix_convolver_test
         tests/MatrixConvolverTest.cpp
         ViPERDSP/viper/utils/MatrixConvolver.cpp
-        ViPERDSP/viper/utils/pffft.c
     )
     target_include_directories(matrix_convolver_test PRIVATE ViPERDSP)
-    target_link_libraries(matrix_convolver_test PRIVATE m)
+    target_link_libraries(matrix_convolver_test PRIVATE pffft_core m)
     add_test(NAME matrix_convolver_test COMMAND matrix_convolver_test)
 
     add_executable(convolver_test tests/ConvolverTest.cpp)
@@ -149,6 +151,14 @@ if(BUILD_ANALYZER_TESTS)
     )
     target_link_libraries(iem_scene_rotator_test PRIVATE IEMDSP)
     add_test(NAME iem_scene_rotator_test COMMAND iem_scene_rotator_test)
+
+    add_executable(iem_partitioned_matrix_convolver_test
+        tests/IemPartitionedMatrixConvolverTest.cpp
+    )
+    target_link_libraries(iem_partitioned_matrix_convolver_test PRIVATE IEMDSP)
+    add_test(NAME iem_partitioned_matrix_convolver_test
+        COMMAND iem_partitioned_matrix_convolver_test
+    )
 
     add_executable(iem_parameter_mailbox_test
         tests/IemParameterMailboxTest.cpp

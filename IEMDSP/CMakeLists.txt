@@ -9,6 +9,7 @@ add_library(IEMDSP STATIC
     src/IemParams.cpp
     src/IemTelemetry.cpp
     src/MultiEncoder.cpp
+    src/PartitionedMatrixConvolver.cpp
     src/PlanarBlockScheduler.cpp
     src/SceneRotator.cpp
     src/SphericalHarmonics.cpp
@@ -22,6 +23,7 @@ target_include_directories(IEMDSP
 )
 
 target_compile_features(IEMDSP PUBLIC cxx_std_17)
+target_link_libraries(IEMDSP PUBLIC pffft_core)
 target_compile_options(IEMDSP PRIVATE
     -Wall -Wextra -Werror
     -fno-exceptions -fno-rtti
