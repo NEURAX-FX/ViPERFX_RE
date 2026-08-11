@@ -17,6 +17,14 @@ enum class IemBypassReason : uint32_t {
     PROCESS_FAILURE,
 };
 
+enum class IemPreparationResult : uint32_t {
+    NONE = 0,
+    SUCCESS,
+    DEFERRED,
+    FAILED,
+    INVALID_PARAMETER,
+};
+
 struct IemTelemetrySnapshot {
     uint64_t sequence = 0;
     uint64_t processed_frames = 0;
@@ -25,9 +33,20 @@ struct IemTelemetrySnapshot {
     uint64_t max_process_ns = 0;
     uint64_t deadline_misses = 0;
     uint64_t output_underflows = 0;
+    uint64_t input_overflows = 0;
+    uint64_t output_overflows = 0;
+    uint64_t grain_pool_exhaustions = 0;
+    uint64_t graph_generation = 0;
     uint32_t host_sample_rate = 0;
     uint32_t internal_sample_rate = 96000;
     uint32_t latency_frames = 0;
+    uint32_t active_grains = 0;
+    uint32_t encoder_mode = 0;
+    uint32_t ambisonics_order = 0;
+    uint32_t fault_code = 0;
+    IemPreparationResult preparation_result = IemPreparationResult::NONE;
+    float latency_ms = 0.0F;
+    float limiter_gain_reduction_db = 0.0F;
     IemBypassReason bypass_reason = IemBypassReason::DISABLED;
     bool enabled = false;
     bool prepared = false;
@@ -51,6 +70,15 @@ public:
         IemBypassReason reason = IemBypassReason::NONE
     ) noexcept;
     void RecordFailure(IemBypassReason reason) noexcept;
+    void RecordQueueOverflow(bool input_queue) noexcept;
+    void RecordSpatialState(
+        uint32_t encoder_mode,
+        uint32_t ambisonics_order,
+        uint32_t active_grains,
+        uint64_t grain_pool_exhaustions,
+        uint32_t fault_code,
+        float limiter_gain_reduction_db
+    ) noexcept;
     bool Read(IemTelemetrySnapshot &snapshot) const noexcept;
 
 private:

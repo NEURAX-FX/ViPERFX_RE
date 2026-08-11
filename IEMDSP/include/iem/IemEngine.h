@@ -43,6 +43,7 @@ public:
     bool IsPrepared() const noexcept { return prepared_; }
     const IemParams &Params() const noexcept { return params_; }
     uint32_t ActiveGrainCount() const noexcept { return pipeline_.ActiveGrainCount(); }
+    bool IsFrozen() const noexcept { return pipeline_.IsFrozen(); }
     uint64_t GrainPoolExhaustionCount() const noexcept {
         return pipeline_.GrainPoolExhaustionCount();
     }

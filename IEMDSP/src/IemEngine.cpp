@@ -96,6 +96,14 @@ bool IemEngine::Process(
         );
         const uint64_t budget_ns = static_cast<uint64_t>(host_frames)
             * 1000000000ULL / config_.host_sample_rate;
+        telemetry_.RecordSpatialState(
+            static_cast<uint32_t>(params_.encoder_mode),
+            params_.order,
+            pipeline_.ActiveGrainCount(),
+            pipeline_.GrainPoolExhaustionCount(),
+            static_cast<uint32_t>(pipeline_.Error()),
+            pipeline_.LimiterGainReductionDb()
+        );
         telemetry_.RecordBlock(
             host_frames,
             process_ns,
@@ -140,6 +148,7 @@ bool IemEngine::Process(
     const float *internal_const_ptrs[2]{internal_ptrs[0], internal_ptrs[1]};
     if (internal_frames != 0
         && !input_scheduler_.Push(internal_const_ptrs, internal_frames)) {
+        telemetry_.RecordQueueOverflow(true);
         return finish(false, IemBypassReason::INVALID_BLOCK);
     }
 
@@ -180,6 +189,7 @@ bool IemEngine::Process(
         };
         if (produced != 0
             && !output_fifo_.Push(host_resampled_const_ptrs, produced)) {
+            telemetry_.RecordQueueOverflow(false);
             return finish(false, IemBypassReason::INVALID_BLOCK);
         }
         input_scheduler_.ConsumeBlock();

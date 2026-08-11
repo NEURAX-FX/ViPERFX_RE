@@ -85,6 +85,21 @@ bool TestCorrelatedSignalsDoNotBoost() {
     return true;
 }
 
+bool TestFadeThroughSilence() {
+    viper::audio::GraphCrossfade transition;
+    if (!transition.Prepare(48000)) return false;
+    transition.StartFadeThroughSilence();
+    std::vector<float> old_signal(transition.TransitionFrames() * 2, 0.5F);
+    std::vector<float> new_signal(transition.TransitionFrames() * 2, 0.75F);
+    transition.Apply(new_signal.data(), old_signal.data(), transition.TransitionFrames());
+    const std::size_t middle = transition.TransitionFrames() / 2U * 2U;
+    return Check(Near(new_signal[0], 0.5F), "fade-through begins old")
+        && Check(std::fabs(new_signal[middle]) < 0.01F, "fade-through reaches silence")
+        && Check(Near(new_signal[new_signal.size() - 2U], 0.75F),
+            "fade-through ends new")
+        && Check(!transition.IsActive(), "fade-through completes");
+}
+
 } // namespace
 
 int main() {
@@ -92,6 +107,7 @@ int main() {
     if (!TestCorrelationSafeCurve()) return 1;
     if (!TestBlockContinuity()) return 1;
     if (!TestCorrelatedSignalsDoNotBoost()) return 1;
+    if (!TestFadeThroughSilence()) return 1;
     std::puts("Graph crossfade tests passed");
     return 0;
 }

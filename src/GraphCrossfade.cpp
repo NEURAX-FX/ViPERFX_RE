@@ -44,6 +44,7 @@ bool GraphCrossfade::Prepare(uint32_t sample_rate, float duration_ms) {
 void GraphCrossfade::Reset() noexcept {
     position_ = wet_gains_.size();
     active_ = false;
+    mode_ = Mode::CROSSFADE;
 }
 
 void GraphCrossfade::StartDryToWet() noexcept {
@@ -54,6 +55,18 @@ void GraphCrossfade::StartDryToWet() noexcept {
     }
     position_ = 0;
     active_ = true;
+    mode_ = Mode::CROSSFADE;
+}
+
+void GraphCrossfade::StartFadeThroughSilence() noexcept {
+    if (wet_gains_.empty()) {
+        active_ = false;
+        position_ = 0;
+        return;
+    }
+    position_ = 0;
+    active_ = true;
+    mode_ = Mode::FADE_THROUGH_SILENCE;
 }
 
 void GraphCrossfade::Apply(
@@ -64,8 +77,21 @@ void GraphCrossfade::Apply(
     if (!active_ || wet == nullptr || dry == nullptr || frame_count == 0) return;
     const size_t frames = std::min(frame_count, RemainingFrames());
     for (size_t frame = 0; frame < frames; ++frame) {
-        const float dry_gain = dry_gains_[position_];
-        const float wet_gain = wet_gains_[position_];
+        float dry_gain = dry_gains_[position_];
+        float wet_gain = wet_gains_[position_];
+        if (mode_ == Mode::FADE_THROUGH_SILENCE) {
+            const float progress = wet_gains_.size() == 1
+                ? 1.0F
+                : static_cast<float>(position_)
+                    / static_cast<float>(wet_gains_.size() - 1U);
+            if (progress <= 0.5F) {
+                dry_gain = std::cos(progress * 2.0F * kHalfPi);
+                wet_gain = 0.0F;
+            } else {
+                dry_gain = 0.0F;
+                wet_gain = std::sin((progress - 0.5F) * 2.0F * kHalfPi);
+            }
+        }
         const size_t sample = frame * kChannelCount;
         wet[sample] = dry[sample] * dry_gain + wet[sample] * wet_gain;
         wet[sample + 1] = dry[sample + 1] * dry_gain + wet[sample + 1] * wet_gain;

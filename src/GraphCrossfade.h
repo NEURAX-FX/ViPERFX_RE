@@ -12,6 +12,7 @@ public:
     bool Prepare(uint32_t sample_rate, float duration_ms = 5.0F);
     void Reset() noexcept;
     void StartDryToWet() noexcept;
+    void StartFadeThroughSilence() noexcept;
     void Apply(float *wet, const float *dry, size_t frame_count) noexcept;
 
     bool IsActive() const noexcept;
@@ -19,10 +20,16 @@ public:
     size_t RemainingFrames() const noexcept;
 
 private:
+    enum class Mode {
+        CROSSFADE,
+        FADE_THROUGH_SILENCE,
+    };
+
     std::vector<float> dry_gains_;
     std::vector<float> wet_gains_;
     size_t position_ = 0;
     bool active_ = false;
+    Mode mode_ = Mode::CROSSFADE;
 };
 
 } // namespace viper::audio

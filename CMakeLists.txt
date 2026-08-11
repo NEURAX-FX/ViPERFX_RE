@@ -66,6 +66,10 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_pipeline_test PRIVATE IEMDSP)
     add_test(NAME iem_pipeline_test COMMAND iem_pipeline_test)
 
+    add_executable(iem_realtime_audit_test tests/IemRealtimeAuditTest.cpp)
+    target_link_libraries(iem_realtime_audit_test PRIVATE IEMDSP)
+    add_test(NAME iem_realtime_audit_test COMMAND iem_realtime_audit_test)
+
     find_package(Threads REQUIRED)
     add_executable(audio_analyzer_test
         tests/AudioAnalyzerTest.cpp
