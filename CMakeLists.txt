@@ -58,6 +58,14 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_ku100_decoder_test PRIVATE IEMDSP)
     add_test(NAME iem_ku100_decoder_test COMMAND iem_ku100_decoder_test)
 
+    add_executable(iem_limiter_test tests/IemLimiterTest.cpp)
+    target_link_libraries(iem_limiter_test PRIVATE IEMDSP)
+    add_test(NAME iem_limiter_test COMMAND iem_limiter_test)
+
+    add_executable(iem_pipeline_test tests/IemPipelineTest.cpp)
+    target_link_libraries(iem_pipeline_test PRIVATE IEMDSP)
+    add_test(NAME iem_pipeline_test COMMAND iem_pipeline_test)
+
     find_package(Threads REQUIRED)
     add_executable(audio_analyzer_test
         tests/AudioAnalyzerTest.cpp

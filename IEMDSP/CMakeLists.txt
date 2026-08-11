@@ -9,8 +9,10 @@ add_library(IEMDSP STATIC
     src/HeadphoneEq.cpp
     src/IemEngine.cpp
     src/IemParams.cpp
+    src/IemPipeline.cpp
     src/IemTelemetry.cpp
     src/Ku100Decoder.cpp
+    src/LinkedLookaheadLimiter.cpp
     src/MultiEncoder.cpp
     src/PartitionedMatrixConvolver.cpp
     src/PlanarBlockScheduler.cpp
