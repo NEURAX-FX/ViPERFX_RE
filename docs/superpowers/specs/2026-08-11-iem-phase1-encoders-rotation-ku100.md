@@ -56,7 +56,7 @@ Phase 1 uses an algorithm-source plus thin-adapter strategy. It does not compile
 
 ### 3.1 Directly vendored code
 
-Pure algorithm files such as the efficient spherical-harmonic evaluator and quaternion helpers may be vendored unchanged under an `IEMDSP/upstream/` subtree. Vendored files must retain their original copyright and license headers. A manifest records the upstream path, commit, local path, and whether the file is unchanged or patched.
+Pure algorithm files such as the efficient spherical-harmonic evaluator may be vendored unchanged under an `IEMDSP/upstream/` subtree. Upstream `Quaternion.h` is also retained there as an unchanged reference, but it is not compiled because its vector helpers include JUCE types; a project-local scalar quaternion adapter reproduces the required math. Vendored files must retain their original copyright and license headers. A manifest records the upstream path, commit, local path, compile status, and whether the file is unchanged or adapted.
 
 ### 3.2 Adapted code
 
@@ -210,6 +210,17 @@ Pinned source SHA-256 values:
 
 The asset generator validates hash, PCM format, sample rate, channel count, and frame count, resamples deterministically to 96 kHz, and emits immutable float resources plus a machine-readable manifest. Decoder channel mapping is covered by per-input impulse tests.
 
+The generated `N -> 2` matrix must reproduce the pinned BinauralDecoder boundary exactly rather than treating all `2N` WAV channels as an already interleaved left/right matrix:
+
+- read the first `N = (order + 1)^2` source filters, matching the upstream destination buffer;
+- for ACN channel `(n, m)`, bake the upstream SN3D-to-N3D factor `sqrt(2n + 1)` into that channel's filter;
+- apply the upstream decoder gain of 0.3;
+- bake the upstream 44.1-to-96 kHz resampling compensation factor `44100 / 96000` after deterministic resampling;
+- channels with `m >= 0` are Mid filters and contribute with the same sign to left and right;
+- channels with `m < 0` are Side filters and contribute positive to left and negative to right.
+
+This produces a prepared left/right IR for every ACN input channel. The remaining source WAV channels are retained and hash-validated as provenance but are not decoded directly, matching the pinned upstream implementation.
+
 Resource attribution must preserve the upstream references: Benjamin Bernschuetz's Neumann KU100 far-field HRIR/HRTF compilation and the magnitude-least-squares rendering work by Schoerkhuber, Zaunschirm, and Hoeldrich. These citations appear in the generated manifest and the App license surface.
 
 ### 4.8 Headphone compensation
@@ -229,13 +240,13 @@ Sennheiser HD565 Ovation, Sennheiser HD600, Sennheiser HD650,
 Shure SRH940
 ```
 
-Off is the default and bypasses the EQ stage at zero processing cost.
+Off is the default. It bypasses EQ convolution and uses a matched delay equal to the prepared EQ partition latency, so switching EQ does not change the pipeline time origin. Off performs no EQ FFT work.
 
 ### 4.9 Wet/dry, output gain, and limiter
 
 When IEM is enabled, the dry branch is delayed by the measured wet-path latency before mixing. Wet is equal-power mixed from 0 to 100 percent. Output gain follows the mix and ranges from -24.0 to +24.0 dB.
 
-The limiter is stereo-linked and uses a fixed 1.0 ms lookahead at 96 kHz, instantaneous peak attack, and a 50 ms exponential release. Both channels share one gain envelope to preserve image direction. It is a sample-peak limiter with no automatic makeup gain. Ceiling ranges from -12.00 to 0.00 dBFS and defaults to -0.30 dBFS. Limiter latency is included in telemetry.
+The limiter is stereo-linked and uses a fixed 1.0 ms lookahead at 96 kHz, instantaneous peak attack, and a 50 ms exponential release. Both channels share one gain envelope to preserve image direction. It is a sample-peak limiter with no automatic makeup gain. Ceiling ranges from -12.00 to 0.00 dBFS and defaults to -0.30 dBFS. When Limiter is Off, the stage keeps the same 96-frame delay but skips peak/envelope gain processing, allowing Limiter Enable to remain a dynamic parameter. Limiter latency is included in telemetry.
 
 When IEM is disabled, the entire IEM pipeline is bypassed and adds no latency or steady-state CPU use.
 
@@ -251,7 +262,7 @@ Profiles are user-facing CPU/stability goals:
 
 The selected profile chooses convolution partitioning and scheduler waterlines. Low, Balanced, and Stable must use monotonically nondecreasing partition sizes and waterlines, and their measured total IEM latency must not exceed 10, 20, and 40 ms respectively. Within those limits, the implementation selects the smallest settings that satisfy the p99 CPU gate on the target device. The selected constants are fixed in source and covered by latency tests; they are not tuned dynamically on the audio thread. Actual algorithmic latency is measured from prepared stage delays and reported, and no delay is inserted solely to make the number equal the UI target.
 
-Structural fields are Encoder Mode, Order, Headphone EQ, and Latency Profile. A structural change prepares one pending graph on the control thread. Rapid changes coalesce to the newest desired snapshot; there is never an unbounded graph-build queue.
+Structural fields are Encoder Mode, Order, Headphone EQ, and Latency Profile. A structural change prepares one pending graph on the control thread while IEM is enabled. While IEM is disabled, structural updates only change the persistent snapshot; enabling IEM prepares exactly one graph from the complete latest snapshot. Rapid enabled-state changes coalesce to the newest desired snapshot; there is never an unbounded graph-build queue.
 
 Mode, Order, and EQ changes with equal latency use an equal-power graph crossfade. A latency-profile change uses a short fade-out, graph switch and prefill, then fade-in; two streams with different time origins are not mixed directly.
 
@@ -340,7 +351,7 @@ Reset Rotation, Reset IEM, Freeze transitions, and Resource Reset have dedicated
 
 The App adds `IemState` as a member of `EffectState`, with nested state for General, Stereo, Multi, Granular, Rotation, Decoder, and Output. All user parameters except Freeze are stored in device settings and preset JSON.
 
-The native `IemParams` remains separate from `ViPERParams`. The HIDL/legacy AudioEffect path sends the scalar and indexed IDs from section 6. `ViperDispatcher.dispatchState()` sends every persistent IEM field when attaching the service or restoring a preset, and `EffectStateStore` sends one incremental ID for an ordinary edit. Command IDs are never persisted or included in a full-state restore.
+The native `IemParams` remains separate from `ViPERParams`. The HIDL/legacy AudioEffect path sends the scalar and indexed IDs from section 6. `ViperDispatcher.dispatchState()` publishes a complete state in this exact order: send Enable=0, send every other persistent IEM field, then send Enable with the target value. Because disabled structural updates do not build graphs, an enabled full-state restore prepares once from a complete snapshot. `EffectStateStore` sends one incremental ID for an ordinary edit. Command IDs are never persisted or included in a full-state restore.
 
 The existing AIDL `ConfigChannel`, `ViperParamsSerializer`, shared-memory slot size, and `FORMAT_VERSION = 6` are not modified. When the App is operating in AIDL mode, the Phase 1 IEM card is not shown because the corresponding native reader is outside this phase.
 
@@ -348,9 +359,10 @@ On service attach or state restore:
 
 1. App normalizes persisted values.
 2. Freeze is forced Off.
-3. App publishes one complete snapshot.
-4. The control side computes structural differences and prepares a graph if needed.
-5. The audio thread consumes only complete mailbox generations.
+3. App sends Enable=0 and the complete non-command snapshot.
+4. App sends the target Enable value.
+5. The control side prepares at most one graph from the complete snapshot.
+6. The audio thread consumes only complete mailbox generations.
 
 Full-state and incremental dispatch must converge on field-equivalent native `IemParams` snapshots.
 
