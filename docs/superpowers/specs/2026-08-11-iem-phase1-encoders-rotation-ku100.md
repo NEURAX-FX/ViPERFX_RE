@@ -24,9 +24,12 @@ ViPER stereo output
 
 Room simulation, head tracking, OSC, RoomEncoder, SimpleDecoder, AllRADecoder, EnergyVisualizer, and MultiBandCompressor are not part of Phase 1.
 
+The target device uses the HIDL/legacy AudioEffect path. AIDL effect transport and its mmap reader are not available in the current source workspaces and are not part of Phase 1.
+
 ## 2. Confirmed Product Decisions
 
 - Delivery is end to end: native DSP, parameter protocol, persistence, telemetry, a main-screen card, and a dedicated control page.
+- Delivery targets the HIDL/legacy `AudioEffect.setParameter` path. Existing AIDL shared-memory format version 6 remains unchanged.
 - The runtime uses a fixed staged pipeline rather than a monolithic processor or three resident complete graphs.
 - The internal convention is fixed to ACN/SN3D in Phase 1.
 - Supported Ambisonics orders are 1, 2, and 3.
@@ -333,19 +336,13 @@ Multi array parameters use `val1 = source index` and `val2 = raw value`, matchin
 
 Reset Rotation, Reset IEM, Freeze transitions, and Resource Reset have dedicated command semantics. An invalid enum, source index, or command value is rejected. Continuous values are clamped in both App normalization and the driver parser, with the driver remaining authoritative. IDs not listed above remain reserved and must not be interpreted by Phase 1.
 
-## 7. State, Persistence, and Shared Memory
+## 7. State, Persistence, and Dispatch
 
 The App adds `IemState` as a member of `EffectState`, with nested state for General, Stereo, Multi, Granular, Rotation, Decoder, and Output. All user parameters except Freeze are stored in device settings and preset JSON.
 
-The native `IemParams` remains separate from `ViPERParams`. The standard AudioEffect path sends scalar/indexed IDs. The global/AIDL mmap path bumps `FORMAT_VERSION` from 6 to 7 and appends an explicit little-endian `IemWireParams` block to each complete-state slot.
+The native `IemParams` remains separate from `ViPERParams`. The HIDL/legacy AudioEffect path sends the scalar and indexed IDs from section 6. `ViperDispatcher.dispatchState()` sends every persistent IEM field when attaching the service or restoring a preset, and `EffectStateStore` sends one incremental ID for an ordinary edit. Command IDs are never persisted or included in a full-state restore.
 
-`IemWireParams` is not a raw memory image of the C++ struct. Version 1 of the block is 216 bytes:
-
-- offset 0: little-endian `int32 schemaVersion = 1`;
-- offset 4: little-endian `int32 byteSize = 216`;
-- offset 8: 52 little-endian `int32` values.
-
-The 52 values use the parameter-table order: general `0x12000-0x12007` (8), Stereo `0x12010-0x12014` (5), Multi in parameter-major order with source 0 then source 1 for each of `0x12020-0x12023` (8), Granular `0x12030-0x12045` (22), Rotation `0x12050-0x12057` (8), and Decoder `0x12060` (1). Commands are never stored in the snapshot. Kotlin and C++ define matching offsets and sizes, with byte-level contract tests. Each mmap slot is `ViperParamsLayout.SIZE + 216` bytes. A full-state publish updates ViPER and IEM state in the same inactive slot before the release fence and slot flip.
+The existing AIDL `ConfigChannel`, `ViperParamsSerializer`, shared-memory slot size, and `FORMAT_VERSION = 6` are not modified. When the App is operating in AIDL mode, the Phase 1 IEM card is not shown because the corresponding native reader is outside this phase.
 
 On service attach or state restore:
 
@@ -353,9 +350,9 @@ On service attach or state restore:
 2. Freeze is forced Off.
 3. App publishes one complete snapshot.
 4. The control side computes structural differences and prepares a graph if needed.
-5. The audio thread consumes only complete generations.
+5. The audio thread consumes only complete mailbox generations.
 
-Full-state and incremental dispatch must converge on byte-for-byte equivalent native snapshots.
+Full-state and incremental dispatch must converge on field-equivalent native `IemParams` snapshots.
 
 ## 8. App UX
 
@@ -471,9 +468,9 @@ Golden fixture metadata records upstream commit, parameters, sample rate, input 
 - Equal-latency crossfade and latency-profile fade-through transition.
 - Enable/bypass, reset/discontinuity, 8-384 kHz host rates, and random callback sizes from 8 to the configured maximum.
 - Every parameter ID, range, scaling, enum, command, and indexed source.
-- `IemWireParams` Kotlin/C++ offsets, size, version, and double-slot publication.
 - Preference and preset round trip; Freeze exclusion.
 - Full-state and incremental dispatch equivalence.
+- A UI policy test proves the IEM card is shown on the HIDL path and omitted in AIDL mode.
 - Telemetry consistency and fault reporting.
 
 ### 12.4 Real-time and build gates
@@ -494,7 +491,7 @@ Phase 1 is complete only when:
 2. Manual Scene Rotator and KU100 Ord1-Ord3 decoding pass upstream golden and impulse tests.
 3. All 23 headphone EQ choices are reproducibly embedded and selectable.
 4. Wet/dry alignment, latency profiles, output gain, and the linked limiter meet tests and device performance gates.
-5. Standard AudioEffect and global/AIDL paths restore and update the same IEM state.
+5. The HIDL/legacy AudioEffect path restores and incrementally updates the same IEM state, while AIDL mode does not expose unsupported controls.
 6. The main card and dedicated MiuiX editor expose every Phase 1 control without hidden important actions.
 7. Attribution and GPL obligations are present in both the editor footer and license surface.
 8. Disabled IEM preserves the existing ViPER output and adds no steady-state latency or CPU work.
