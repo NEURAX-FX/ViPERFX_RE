@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.16)
 add_library(IEMDSP STATIC
     upstream/efficientSHvanilla.cpp
     src/AlignedPlanarBuffer.cpp
+    src/Grain.cpp
+    src/GranularEncoder.cpp
     src/IemEngine.cpp
     src/IemParams.cpp
     src/IemTelemetry.cpp

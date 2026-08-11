@@ -136,6 +136,14 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_encoder_test PRIVATE IEMDSP)
     add_test(NAME iem_encoder_test COMMAND iem_encoder_test)
 
+    add_executable(iem_granular_encoder_test
+        tests/IemGranularEncoderTest.cpp
+    )
+    target_link_libraries(iem_granular_encoder_test PRIVATE IEMDSP)
+    add_test(NAME iem_granular_encoder_test
+        COMMAND iem_granular_encoder_test
+    )
+
     add_executable(iem_parameter_mailbox_test
         tests/IemParameterMailboxTest.cpp
         src/IemParameterMailbox.cpp
