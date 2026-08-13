@@ -45,6 +45,7 @@ void HaloStft::Release() noexcept {
     prepared_ = false;
     analysis_fill_ = 0;
     synth_fill_ = 0;
+    synth_frames_ = 0;
 }
 
 bool HaloStft::Prepare(std::size_t max_frames) noexcept {
@@ -82,8 +83,25 @@ bool HaloStft::Prepare(std::size_t max_frames) noexcept {
     }
     analysis_fill_ = 0;
     synth_fill_ = 0;
+    synth_frames_ = kFftSize + max_frames;
     prepared_ = true;
     return true;
+}
+
+void HaloStft::Reset() noexcept {
+    if (!prepared_) return;
+    ClearFloats(analysis_left_, kFftSize);
+    ClearFloats(analysis_right_, kFftSize);
+    ClearFloats(synth_, synth_frames_);
+    ClearFloats(left_re_, kBins);
+    ClearFloats(left_im_, kBins);
+    ClearFloats(right_re_, kBins);
+    ClearFloats(right_im_, kBins);
+    analysis_fill_ = 0;
+    synth_fill_ = 0;
+    for (uint32_t index = 0; index < kHistoryFrames; ++index) {
+        history_map_[index] = index;
+    }
 }
 
 void HaloStft::AnalyzeChannel(const float *time, float *re, float *im) noexcept {

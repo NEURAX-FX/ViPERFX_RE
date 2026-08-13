@@ -1,5 +1,6 @@
 #pragma once
 
+#include "iem/HaloBed.h"
 #include "iem/HaloDialogExtractor.h"
 #include "iem/HaloStft.h"
 #include "iem/IemParams.h"
@@ -7,17 +8,6 @@
 #include <cstdint>
 
 namespace iem {
-
-enum class HaloBedChannel : uint32_t {
-    L = 0,
-    R = 1,
-    C = 2,
-    Ls = 3,
-    Rs = 4,
-    Lsr = 5,
-    Rsr = 6,
-    kCount = 7
-};
 
 class HaloSurroundAssigner {
 public:

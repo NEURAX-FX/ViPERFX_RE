@@ -30,6 +30,7 @@ public:
     HaloStft &operator=(const HaloStft &) = delete;
 
     bool Prepare(std::size_t max_frames) noexcept;
+    void Reset() noexcept;
     bool Process(
         const float *left,
         const float *right,
@@ -65,6 +66,7 @@ private:
     float *right_im_ = nullptr;
     std::size_t analysis_fill_ = 0;
     std::size_t synth_fill_ = 0;
+    std::size_t synth_frames_ = 0;
     uint32_t history_map_[kHistoryFrames]{};
 };
 
