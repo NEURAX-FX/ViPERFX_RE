@@ -76,16 +76,24 @@ void IemTelemetryPublisher::RecordQueueOverflow(bool input_queue) noexcept {
 
 void IemTelemetryPublisher::RecordSpatialState(
     uint32_t encoder_mode,
+    uint32_t render_mode,
     uint32_t ambisonics_order,
     uint32_t active_grains,
     uint64_t grain_pool_exhaustions,
+    uint32_t halo_prepared,
+    uint32_t halo_stft_latency_frames,
+    IemPreparationResult dialog_net_result,
     uint32_t fault_code,
     float limiter_gain_reduction_db
 ) noexcept {
     writer_state_.encoder_mode = encoder_mode;
+    writer_state_.render_mode = render_mode;
     writer_state_.ambisonics_order = ambisonics_order;
     writer_state_.active_grains = active_grains;
     writer_state_.grain_pool_exhaustions = grain_pool_exhaustions;
+    writer_state_.halo_prepared = halo_prepared;
+    writer_state_.halo_stft_latency_frames = halo_stft_latency_frames;
+    writer_state_.dialog_net_result = dialog_net_result;
     writer_state_.fault_code = fault_code;
     writer_state_.limiter_gain_reduction_db = limiter_gain_reduction_db;
 }

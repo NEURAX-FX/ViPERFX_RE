@@ -17,7 +17,9 @@ bool Check(bool condition, const char *message) {
 bool TestSnapshotAndWireMapping() {
     iem::IemTelemetryPublisher publisher;
     publisher.Configure(48000, 96000);
-    publisher.RecordSpatialState(2, 3, 17, 9, 4, 2.5F);
+    publisher.RecordSpatialState(
+        3, 0, 3, 17, 9, 1, 1024,
+        iem::IemPreparationResult::SUCCESS, 4, 2.5F);
     publisher.RecordQueueOverflow(true);
     publisher.RecordQueueOverflow(false);
     publisher.RecordBlock(256, 1200000, 5333333, 1024, true);
@@ -34,9 +36,14 @@ bool TestSnapshotAndWireMapping() {
     if (!Check(snapshot.output_underflows == 1, "record output underflow")) return false;
     if (!Check(snapshot.input_overflows == 1 && snapshot.output_overflows == 1,
             "record queue overflows")) return false;
-    if (!Check(snapshot.encoder_mode == 2 && snapshot.ambisonics_order == 3
+    if (!Check(snapshot.encoder_mode == 3 && snapshot.render_mode == 0
+            && snapshot.ambisonics_order == 3
             && snapshot.active_grains == 17 && snapshot.grain_pool_exhaustions == 9,
             "record spatial state")) return false;
+    if (!Check(snapshot.halo_prepared == 1
+            && snapshot.halo_stft_latency_frames == 1024
+            && snapshot.dialog_net_result == iem::IemPreparationResult::SUCCESS,
+            "record Halo preparation state")) return false;
     if (!Check(snapshot.fault_code == 4
             && std::fabs(snapshot.limiter_gain_reduction_db - 2.5F) < 1.0e-6F,
             "record fault and limiter state")) return false;
@@ -49,14 +56,19 @@ bool TestSnapshotAndWireMapping() {
 
     const viper::IemTelemetryWire wire = viper::MakeIemTelemetryWire(snapshot);
     static_assert(sizeof(viper::TelemetryWire) == 320);
-    static_assert(sizeof(viper::IemTelemetryWire) == 152);
+    static_assert(sizeof(viper::IemTelemetryWire) == 168);
     return Check(wire.version == viper::kIemTelemetryVersion, "map wire version")
         && Check(wire.wire_size == sizeof(wire), "map wire size")
         && Check(wire.processed_frames == snapshot.processed_frames, "map processed frames")
         && Check(wire.bypass_reason == static_cast<uint32_t>(snapshot.bypass_reason),
                   "map bypass reason")
-        && Check(wire.encoder_mode == 2 && wire.ambisonics_order == 3,
+        && Check(wire.encoder_mode == 3 && wire.render_mode == 0
+            && wire.ambisonics_order == 3,
             "map spatial state")
+        && Check(wire.halo_prepared == 1 && wire.halo_stft_latency_frames == 1024
+            && wire.dialog_net_result
+                == static_cast<uint32_t>(iem::IemPreparationResult::SUCCESS),
+            "map Halo preparation state")
         && Check(wire.input_overflows == 1 && wire.output_overflows == 1,
             "map queue overflow state")
         && Check(std::fabs(wire.latency_ms - 21.333333F) < 0.001F,

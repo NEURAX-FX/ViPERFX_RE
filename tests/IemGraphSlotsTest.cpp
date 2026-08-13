@@ -100,6 +100,7 @@ bool TestParamsAndResourcesStayCoherentAcrossTransition() {
     if (!resources.CaptureRaw(iem::kParamIemResourceReset, 1)) return false;
     params.wet = 0.75F;
     params.order = 2;
+    params.render_mode = iem::RenderMode::OFF;
     if (!slots.PreparePending({48000, 8192, 2}, params, resources)) return false;
     const auto swap = slots.ConsumePending();
     if (!Check(swap.active->ResourceGeneration() == 1, "apply replacement resource generation")) return false;
@@ -111,7 +112,9 @@ bool TestParamsAndResourcesStayCoherentAcrossTransition() {
         && Check(std::fabs(swap.previous->Engine().Params().wet - 0.75F) < 1.0e-6F,
                  "apply latest params to previous")
         && Check(swap.previous->Engine().Params().order == 3,
-            "preserve previous graph structural order");
+            "preserve previous graph structural order")
+        && Check(swap.previous->Engine().Params().render_mode == iem::RenderMode::KU100,
+            "preserve previous graph structural render mode");
 }
 
 } // namespace

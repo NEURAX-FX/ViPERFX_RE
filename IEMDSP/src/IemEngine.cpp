@@ -98,9 +98,15 @@ bool IemEngine::Process(
             * 1000000000ULL / config_.host_sample_rate;
         telemetry_.RecordSpatialState(
             static_cast<uint32_t>(params_.encoder_mode),
+            static_cast<uint32_t>(params_.render_mode),
             params_.order,
             pipeline_.ActiveGrainCount(),
             pipeline_.GrainPoolExhaustionCount(),
+            pipeline_.HaloPrepared() ? 1U : 0U,
+            pipeline_.HaloStftLatencyFrames(),
+            pipeline_.HaloPrepared()
+                ? IemPreparationResult::SUCCESS
+                : IemPreparationResult::NONE,
             static_cast<uint32_t>(pipeline_.Error()),
             pipeline_.LimiterGainReductionDb()
         );

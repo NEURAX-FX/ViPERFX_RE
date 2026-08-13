@@ -10,8 +10,8 @@ namespace viper {
 
 constexpr uint32_t kTelemetryVersion = 1;
 constexpr uint32_t kTelemetryWireSize = 320;
-constexpr uint32_t kIemTelemetryVersion = 2;
-constexpr uint32_t kIemTelemetryWireSize = 152;
+constexpr uint32_t kIemTelemetryVersion = 3;
+constexpr uint32_t kIemTelemetryWireSize = 168;
 
 struct TelemetryWire {
     uint32_t version;
@@ -52,12 +52,15 @@ struct IemTelemetryWire {
     uint32_t prepared;
     uint32_t active_grains;
     uint32_t encoder_mode;
+    uint32_t render_mode;
     uint32_t ambisonics_order;
+    uint32_t halo_prepared;
+    uint32_t halo_stft_latency_frames;
+    uint32_t dialog_net_result;
     uint32_t fault_code;
     uint32_t preparation_result;
     float latency_ms;
     float limiter_gain_reduction_db;
-    uint32_t reserved;
 };
 
 static_assert(
@@ -109,7 +112,11 @@ inline IemTelemetryWire MakeIemTelemetryWire(
     wire.prepared = snapshot.prepared ? 1U : 0U;
     wire.active_grains = snapshot.active_grains;
     wire.encoder_mode = snapshot.encoder_mode;
+    wire.render_mode = snapshot.render_mode;
     wire.ambisonics_order = snapshot.ambisonics_order;
+    wire.halo_prepared = snapshot.halo_prepared;
+    wire.halo_stft_latency_frames = snapshot.halo_stft_latency_frames;
+    wire.dialog_net_result = static_cast<uint32_t>(snapshot.dialog_net_result);
     wire.fault_code = snapshot.fault_code;
     wire.preparation_result = static_cast<uint32_t>(snapshot.preparation_result);
     wire.latency_ms = snapshot.latency_ms;

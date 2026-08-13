@@ -118,6 +118,7 @@ bool TestStructuralDeferralAndLatestWins() {
     const uint64_t initial_generation = context.GraphGeneration();
     if (!context.DispatchRawParam(iem::kParamIemOrder, 2, 0, 0)
         || !context.DispatchRawParam(iem::kParamIemEncoderMode, 1, 0, 0)
+        || !context.DispatchRawParam(iem::kParamIemRenderMode, 0, 0, 0)
         || !context.DispatchRawParam(iem::kParamHeadphoneEq, 0, 0, 0)
         || !context.DispatchRawParam(iem::kParamIemLatencyProfile, 2, 0, 0)) {
         return false;
@@ -131,6 +132,7 @@ bool TestStructuralDeferralAndLatestWins() {
     const auto *pending = context.PendingGraphForTest();
     if (!Check(pending != nullptr && pending->Engine().Params().order == 2
             && pending->Engine().Params().encoder_mode == iem::EncoderMode::MULTI
+            && pending->Engine().Params().render_mode == iem::RenderMode::OFF
             && pending->Engine().Params().latency_profile == iem::LatencyProfile::STABLE
             && pending->Engine().Params().decoder.headphone_eq
                 == iem::HeadphoneEqId::AKG_K1000_CLOSED,
@@ -188,6 +190,29 @@ bool TestCommandsInvalidValuesAndFaultFallback() {
         "fault fallback never returns non-finite samples");
 }
 
+bool TestHaloRenderTelemetry() {
+    viper::audio::IemContext context;
+    if (!context.Prepare(48000, 256)
+        || !context.DispatchRawParam(iem::kParamIemEncoderMode, 3, 0, 0)
+        || !context.DispatchRawParam(iem::kParamIemRenderMode, 0, 0, 0)
+        || !context.DispatchRawParam(iem::kParamIemEnable, 1, 0, 0)) {
+        return false;
+    }
+    std::vector<float> audio(256 * 2, 0.0F);
+    audio[0] = 1.0F;
+    if (!Check(context.Process(audio.data(), 256), "process Halo Off fixture")) return false;
+
+    iem::IemTelemetrySnapshot telemetry{};
+    return Check(context.ReadTelemetry(telemetry), "read Halo telemetry")
+        && Check(telemetry.encoder_mode == 3, "publish Halo encoder mode")
+        && Check(telemetry.render_mode == 0, "publish Off render mode")
+        && Check(telemetry.halo_prepared == 1, "publish Halo prepared flag")
+        && Check(telemetry.halo_stft_latency_frames == 1024,
+            "publish Halo STFT latency")
+        && Check(telemetry.dialog_net_result == iem::IemPreparationResult::SUCCESS,
+            "publish dialog.net preparation success");
+}
+
 } // namespace
 
 int main() {
@@ -198,6 +223,7 @@ int main() {
     if (!TestResetKeepsViPERStateIndependent()) return 1;
     if (!TestStructuralDeferralAndLatestWins()) return 1;
     if (!TestCommandsInvalidValuesAndFaultFallback()) return 1;
+    if (!TestHaloRenderTelemetry()) return 1;
     std::puts("IEM context tests passed");
     return 0;
 }

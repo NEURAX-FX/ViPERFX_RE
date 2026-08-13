@@ -41,6 +41,7 @@ void IemGraph::ApplyParams(const iem::IemParams &params) noexcept {
     const iem::IemParams &structural = engine_.Params();
     dynamic.order = structural.order;
     dynamic.encoder_mode = structural.encoder_mode;
+    dynamic.render_mode = structural.render_mode;
     dynamic.latency_profile = structural.latency_profile;
     dynamic.decoder.headphone_eq = structural.decoder.headphone_eq;
     engine_.ApplyParams(dynamic);

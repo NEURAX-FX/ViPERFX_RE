@@ -49,6 +49,10 @@ public:
     uint32_t LatencyFrames() const noexcept { return total_latency_frames_; }
     uint32_t WetLatencyFrames() const noexcept { return wet_latency_frames_; }
     uint32_t ActiveGrainCount() const noexcept;
+    bool HaloPrepared() const noexcept { return Halo() != nullptr && Halo()->Prepared(); }
+    uint32_t HaloStftLatencyFrames() const noexcept {
+        return Halo() != nullptr ? Halo()->StftLatencyFrames() : 0U;
+    }
     uint64_t GrainPoolExhaustionCount() const noexcept;
     bool IsFrozen() const noexcept;
     float LimiterGainReductionDb() const noexcept {

@@ -42,7 +42,11 @@ struct IemTelemetrySnapshot {
     uint32_t latency_frames = 0;
     uint32_t active_grains = 0;
     uint32_t encoder_mode = 0;
+    uint32_t render_mode = 0;
     uint32_t ambisonics_order = 0;
+    uint32_t halo_prepared = 0;
+    uint32_t halo_stft_latency_frames = 0;
+    IemPreparationResult dialog_net_result = IemPreparationResult::NONE;
     uint32_t fault_code = 0;
     IemPreparationResult preparation_result = IemPreparationResult::NONE;
     float latency_ms = 0.0F;
@@ -73,9 +77,13 @@ public:
     void RecordQueueOverflow(bool input_queue) noexcept;
     void RecordSpatialState(
         uint32_t encoder_mode,
+        uint32_t render_mode,
         uint32_t ambisonics_order,
         uint32_t active_grains,
         uint64_t grain_pool_exhaustions,
+        uint32_t halo_prepared,
+        uint32_t halo_stft_latency_frames,
+        IemPreparationResult dialog_net_result,
         uint32_t fault_code,
         float limiter_gain_reduction_db
     ) noexcept;
