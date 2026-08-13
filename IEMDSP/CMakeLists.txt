@@ -23,6 +23,7 @@ add_library(IEMDSP STATIC
     src/PartitionedMatrixConvolver.cpp
     src/PlanarBlockScheduler.cpp
     src/SceneRotator.cpp
+    src/SimpleDecoder.cpp
     src/SphericalHarmonics.cpp
     src/StereoEncoder.cpp
     src/StreamingResampler.cpp

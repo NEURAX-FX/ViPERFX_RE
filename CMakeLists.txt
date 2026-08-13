@@ -193,6 +193,10 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_halo_encoder_test PRIVATE IEMDSP)
     add_test(NAME iem_halo_encoder_test COMMAND iem_halo_encoder_test)
 
+    add_executable(iem_simple_decoder_test tests/IemSimpleDecoderTest.cpp)
+    target_link_libraries(iem_simple_decoder_test PRIVATE IEMDSP)
+    add_test(NAME iem_simple_decoder_test COMMAND iem_simple_decoder_test)
+
     add_executable(iem_spherical_harmonics_test
         tests/IemSphericalHarmonicsTest.cpp
     )
