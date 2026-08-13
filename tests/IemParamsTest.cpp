@@ -235,7 +235,7 @@ bool TestInvalidValuesAndCommands() {
             params, iem::kParamIemEnable, 2, 0, 0) == iem::ParamUpdate::INVALID,
             "reject invalid enable")
         && Check(iem::UpdateIemParameterSnapshot(
-            params, iem::kParamIemEncoderMode, 3, 0, 0) == iem::ParamUpdate::INVALID,
+            params, iem::kParamIemEncoderMode, 4, 0, 0) == iem::ParamUpdate::INVALID,
             "reject invalid encoder mode")
         && Check(iem::UpdateIemParameterSnapshot(
             params, iem::kParamIemLatencyProfile, -1, 0, 0) == iem::ParamUpdate::INVALID,
@@ -278,6 +278,53 @@ bool TestInvalidValuesAndCommands() {
             "ignore unknown reserved parameter");
 }
 
+bool TestHaloAndRenderModeContract() {
+    static_assert(iem::kParamIemRenderMode == 0x12008);
+    static_assert(iem::kParamHaloDialogIsolate == 0x12070);
+    static_assert(iem::kParamHaloRearShelfGain == 0x1207D);
+
+    iem::IemParams defaults{};
+    if (!Check(defaults.encoder_mode == iem::EncoderMode::STEREO,
+            "encoder still defaults to stereo")) return false;
+    if (!Check(defaults.render_mode == iem::RenderMode::KU100,
+            "render mode defaults to KU100")) return false;
+    if (!Check(defaults.halo.dialog_aggress_thousandths == 500,
+            "dialog aggress default")) return false;
+    if (!Check(defaults.halo.space_thousandths == 800, "space default")) return false;
+    if (!Check(defaults.halo.back_boost, "back boost default")) return false;
+    if (!Check(defaults.halo.rear_shelf_freq_thousandths == 816,
+            "rear shelf frequency default")) return false;
+
+    if (!Check(Updated(defaults, iem::kParamIemEncoderMode, 3)
+            && defaults.encoder_mode == iem::EncoderMode::HALO,
+            "accept Halo encoder mode")) return false;
+    if (!Check(iem::UpdateIemParameterSnapshot(
+            defaults, iem::kParamIemEncoderMode, 4, 0, 0) == iem::ParamUpdate::INVALID,
+            "reject encoder mode 4")) return false;
+    if (!Check(Updated(defaults, iem::kParamIemRenderMode, 0)
+            && defaults.render_mode == iem::RenderMode::OFF,
+            "accept Off render mode")) return false;
+    if (!Check(iem::UpdateIemParameterSnapshot(
+            defaults, iem::kParamIemRenderMode, 3, 0, 0) == iem::ParamUpdate::INVALID,
+            "reject render mode 3")) return false;
+    if (!Check(Updated(defaults, iem::kParamHaloDialogIsolate, 1500)
+            && defaults.halo.dialog_isolate_thousandths == 1000,
+            "clamp Halo thousandths")) return false;
+
+    iem::IemParams left{};
+    iem::IemParams right = left;
+    right.halo.fade_thousandths = 400;
+    if (!Check(!iem::HasStructuralDifference(left, right),
+            "Halo fade is dynamic")) return false;
+    right.render_mode = iem::RenderMode::OFF;
+    if (!Check(iem::HasStructuralDifference(left, right),
+            "render mode is structural")) return false;
+    right = left;
+    right.encoder_mode = iem::EncoderMode::HALO;
+    return Check(iem::HasStructuralDifference(left, right),
+        "Halo encoder mode is structural");
+}
+
 } // namespace
 
 int main() {
@@ -287,6 +334,7 @@ int main() {
     if (!TestGranularMappings()) return 1;
     if (!TestRotationDecoderAndStructuralChanges()) return 1;
     if (!TestInvalidValuesAndCommands()) return 1;
+    if (!TestHaloAndRenderModeContract()) return 1;
     std::puts("IEM parameter tests passed");
     return 0;
 }

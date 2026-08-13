@@ -14,6 +14,7 @@ constexpr int kParamIemEncoderMode = 0x12004;
 constexpr int kParamIemLatencyProfile = 0x12005;
 constexpr int kParamIemLimiterEnable = 0x12006;
 constexpr int kParamIemLimiterCeiling = 0x12007;
+constexpr int kParamIemRenderMode = 0x12008;
 
 constexpr int kParamStereoAzimuth = 0x12010;
 constexpr int kParamStereoElevation = 0x12011;
@@ -60,6 +61,21 @@ constexpr int kParamRotationSequence = 0x12057;
 
 constexpr int kParamHeadphoneEq = 0x12060;
 
+constexpr int kParamHaloDialogIsolate = 0x12070;
+constexpr int kParamHaloDialogAggress = 0x12071;
+constexpr int kParamHaloDialogAttack = 0x12072;
+constexpr int kParamHaloDialogRelease = 0x12073;
+constexpr int kParamHaloDialogMixIn = 0x12074;
+constexpr int kParamHaloDivergence = 0x12075;
+constexpr int kParamHaloFade = 0x12076;
+constexpr int kParamHaloFadeRears = 0x12077;
+constexpr int kParamHaloDiffusion = 0x12078;
+constexpr int kParamHaloSpace = 0x12079;
+constexpr int kParamHaloBackBoost = 0x1207A;
+constexpr int kParamHaloRearShelfEnable = 0x1207B;
+constexpr int kParamHaloRearShelfFreq = 0x1207C;
+constexpr int kParamHaloRearShelfGain = 0x1207D;
+
 constexpr int kParamIemResourceReset = 0x12100;
 constexpr int kCommandResetRotation = 0x12101;
 constexpr int kCommandGranularFreeze = 0x12102;
@@ -69,6 +85,13 @@ enum class EncoderMode : uint32_t {
     STEREO = 0,
     MULTI = 1,
     GRANULAR = 2,
+    HALO = 3,
+};
+
+enum class RenderMode : uint32_t {
+    OFF = 0,
+    SIMPLE = 1,
+    KU100 = 2,
 };
 
 enum class LatencyProfile : uint32_t {
@@ -169,6 +192,23 @@ struct DecoderParams {
     HeadphoneEqId headphone_eq = HeadphoneEqId::OFF;
 };
 
+struct HaloParams {
+    int32_t dialog_isolate_thousandths = 0;
+    int32_t dialog_aggress_thousandths = 500;
+    int32_t dialog_attack_thousandths = 300;
+    int32_t dialog_release_thousandths = 750;
+    int32_t dialog_mix_in_thousandths = 0;
+    int32_t divergence_thousandths = 500;
+    int32_t fade_thousandths = 300;
+    int32_t fade_rears_thousandths = 200;
+    int32_t diffusion_thousandths = 200;
+    int32_t space_thousandths = 800;
+    bool back_boost = true;
+    bool rear_shelf_enable = true;
+    int32_t rear_shelf_freq_thousandths = 816;
+    int32_t rear_shelf_gain_thousandths = 475;
+};
+
 struct LimiterParams {
     bool enabled = true;
     int32_t ceiling_centidb = -30;
@@ -180,6 +220,7 @@ struct IemParams {
     float output_gain_db = 0.0F;
     uint32_t order = 3;
     EncoderMode encoder_mode = EncoderMode::STEREO;
+    RenderMode render_mode = RenderMode::KU100;
     LatencyProfile latency_profile = LatencyProfile::BALANCED;
     LimiterParams limiter{};
     StereoParams stereo{};
@@ -187,6 +228,7 @@ struct IemParams {
     GranularParams granular{};
     RotationParams rotation{};
     DecoderParams decoder{};
+    HaloParams halo{};
 };
 
 enum class ParamUpdate {

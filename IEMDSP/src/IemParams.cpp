@@ -32,6 +32,7 @@ void SetClamped(Value &target, int value, int minimum, int maximum) noexcept {
 
 bool HasStructuralDifference(const IemParams &left, const IemParams &right) noexcept {
     return left.encoder_mode != right.encoder_mode
+        || left.render_mode != right.render_mode
         || left.order != right.order
         || left.decoder.headphone_eq != right.decoder.headphone_eq
         || left.latency_profile != right.latency_profile;
@@ -57,7 +58,9 @@ ParamUpdate UpdateIemParameterSnapshot(
         params.order = static_cast<uint32_t>(std::clamp(val1, 1, 3));
         return ParamUpdate::UPDATED;
     case kParamIemEncoderMode:
-        return SetEnum(params.encoder_mode, val1, 0, 2);
+        return SetEnum(params.encoder_mode, val1, 0, 3);
+    case kParamIemRenderMode:
+        return SetEnum(params.render_mode, val1, 0, 2);
     case kParamIemLatencyProfile:
         return SetEnum(params.latency_profile, val1, 0, 2);
     case kParamIemLimiterEnable:
@@ -182,6 +185,46 @@ ParamUpdate UpdateIemParameterSnapshot(
         return SetEnum(params.rotation.sequence, val1, 0, 1);
     case kParamHeadphoneEq:
         return SetEnum(params.decoder.headphone_eq, val1, -1, 22);
+    case kParamHaloDialogIsolate:
+        SetClamped(params.halo.dialog_isolate_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDialogAggress:
+        SetClamped(params.halo.dialog_aggress_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDialogAttack:
+        SetClamped(params.halo.dialog_attack_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDialogRelease:
+        SetClamped(params.halo.dialog_release_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDialogMixIn:
+        SetClamped(params.halo.dialog_mix_in_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDivergence:
+        SetClamped(params.halo.divergence_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloFade:
+        SetClamped(params.halo.fade_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloFadeRears:
+        SetClamped(params.halo.fade_rears_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDiffusion:
+        SetClamped(params.halo.diffusion_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloSpace:
+        SetClamped(params.halo.space_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloBackBoost:
+        return SetBool(params.halo.back_boost, val1);
+    case kParamHaloRearShelfEnable:
+        return SetBool(params.halo.rear_shelf_enable, val1);
+    case kParamHaloRearShelfFreq:
+        SetClamped(params.halo.rear_shelf_freq_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloRearShelfGain:
+        SetClamped(params.halo.rear_shelf_gain_thousandths, val1, 0, 1000);
+        return ParamUpdate::UPDATED;
     case kParamIemResourceReset:
     case kCommandResetRotation:
     case kCommandResetIemRuntime:
