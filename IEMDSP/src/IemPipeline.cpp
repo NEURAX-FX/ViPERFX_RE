@@ -29,18 +29,24 @@ bool IemPipeline::Prepare(const IemParams &params, std::size_t max_frames) noexc
     profile_config_ = kLatencyProfiles[ProfileIndex(params.latency_profile)];
     if (!PrepareEncoder(params, max_frames)) return false;
     const EncoderConfig encoder_config{96000, max_frames, params.order, 0x6D2B79F5U};
-    if (!rotator_.Prepare(encoder_config)) return false;
-    if (!decoder_.Prepare(params.order, profile_config_.partition_frames)) {
-        error_ = decoder_.Error();
+    if (params.render_mode != RenderMode::OFF && !rotator_.Prepare(encoder_config)) return false;
+    if (params.render_mode != RenderMode::KU100 && !simple_decoder_.Prepare(params.order)) {
         return false;
     }
-    if (!headphone_eq_.Prepare(static_cast<int32_t>(params.decoder.headphone_eq),
-            profile_config_.partition_frames)) {
-        error_ = headphone_eq_.Error();
-        return false;
+    if (params.render_mode == RenderMode::KU100) {
+        if (!decoder_.Prepare(params.order, profile_config_.partition_frames)) {
+            error_ = decoder_.Error();
+            return false;
+        }
+        if (!headphone_eq_.Prepare(static_cast<int32_t>(params.decoder.headphone_eq),
+                profile_config_.partition_frames)) {
+            error_ = headphone_eq_.Error();
+            return false;
+        }
     }
     if (!limiter_.Prepare(96000)
         || !encoded_.Prepare(kMaxAmbisonicsChannels, max_frames)
+        || !halo_bed_.Prepare(kHaloBedChannels, max_frames)
         || !rotated_.Prepare(kMaxAmbisonicsChannels, max_frames)
         || !decoded_.Prepare(2, max_frames)
         || !equalized_.Prepare(2, max_frames)
@@ -48,7 +54,10 @@ bool IemPipeline::Prepare(const IemParams &params, std::size_t max_frames) noexc
         || !mix_.Prepare(2, max_frames)) {
         return false;
     }
-    wet_latency_frames_ = decoder_.LatencyFrames() + headphone_eq_.LatencyFrames();
+    wet_latency_frames_ = Halo() != nullptr ? Halo()->StftLatencyFrames() : 0U;
+    if (params.render_mode == RenderMode::KU100) {
+        wet_latency_frames_ += decoder_.LatencyFrames() + headphone_eq_.LatencyFrames();
+    }
     total_latency_frames_ = wet_latency_frames_ + limiter_.LatencyFrames();
     if (total_latency_frames_ > profile_config_.maximum_latency_ms * 96U) return false;
     dry_delay_.assign(static_cast<std::size_t>(2U) * wet_latency_frames_, 0.0F);
@@ -70,9 +79,11 @@ void IemPipeline::ApplyParams(const IemParams &params) noexcept {
     params_.stereo = params.stereo;
     params_.multi = params.multi;
     params_.granular = params.granular;
+    params_.halo = params.halo;
     params_.rotation = params.rotation;
     if (IemEncoder *encoder = Encoder()) encoder->ApplyParams(params_);
-    rotator_.ApplyParams(params_);
+    if (HaloEncoder *halo = Halo()) halo->ApplyParams(params_);
+    if (params_.render_mode != RenderMode::OFF) rotator_.ApplyParams(params_);
     limiter_.SetEnabled(params_.limiter.enabled);
     limiter_.SetCeilingCentidb(params_.limiter.ceiling_centidb);
     wet_smoother_.SetTarget(std::clamp(params_.wet, 0.0F, 1.0F), max_frames_);
@@ -84,7 +95,7 @@ bool IemPipeline::Process(const float *const stereo[2], float *const output[2],
     std::size_t frames) noexcept {
     if (!prepared_ || frames > max_frames_ || stereo == nullptr || output == nullptr
         || stereo[0] == nullptr || stereo[1] == nullptr || output[0] == nullptr
-        || output[1] == nullptr || Encoder() == nullptr) return false;
+        || output[1] == nullptr || (Encoder() == nullptr && Halo() == nullptr)) return false;
     std::array<float *, kMaxAmbisonicsChannels> encoded_pointers{};
     std::array<float *, kMaxAmbisonicsChannels> rotated_pointers{};
     std::array<const float *, kMaxAmbisonicsChannels> encoded_inputs{};
@@ -95,37 +106,65 @@ bool IemPipeline::Process(const float *const stereo[2], float *const output[2],
         encoded_inputs[channel] = encoded_pointers[channel];
         rotated_inputs[channel] = rotated_pointers[channel];
     }
-    if (!Encoder()->Process(stereo, encoded_pointers.data(), frames)
-        || !rotator_.Process(encoded_inputs.data(), rotated_pointers.data(), frames)) {
+    float *wet_outputs[2]{equalized_.ChannelData(0), equalized_.ChannelData(1)};
+    if (HaloEncoder *halo = Halo()) {
+        std::array<float *, kHaloBedChannels> bed_pointers{};
+        std::array<const float *, kHaloBedChannels> bed_inputs{};
+        for (uint32_t channel = 0; channel < kHaloBedChannels; ++channel) {
+            bed_pointers[channel] = halo_bed_.ChannelData(channel);
+            bed_inputs[channel] = bed_pointers[channel];
+        }
+        if (!halo->ProcessBed(stereo, bed_pointers.data(), frames)) return false;
+        if (params_.render_mode == RenderMode::OFF) {
+            FoldHaloBedToStereo(bed_inputs.data(), wet_outputs, frames);
+        } else {
+            EncodeHaloBedToSn3d(params_.order, bed_inputs.data(), encoded_pointers.data(), frames);
+        }
+    } else if (!Encoder()->Process(stereo, encoded_pointers.data(), frames)) {
         return false;
     }
-    float *decoded_outputs[2]{decoded_.ChannelData(0), decoded_.ChannelData(1)};
-    if (!decoder_.Process(rotated_inputs.data(), decoded_outputs, frames)) {
-        error_ = decoder_.Error();
-        return false;
+
+    if (params_.render_mode != RenderMode::OFF) {
+        if (!rotator_.Process(encoded_inputs.data(), rotated_pointers.data(), frames)) return false;
     }
-    const float *decoded_inputs[2]{decoded_outputs[0], decoded_outputs[1]};
-    float *equalized_outputs[2]{equalized_.ChannelData(0), equalized_.ChannelData(1)};
-    if (!headphone_eq_.Process(decoded_inputs, equalized_outputs, frames)) {
-        error_ = headphone_eq_.Error();
-        return false;
+    if (params_.render_mode == RenderMode::SIMPLE) {
+        if (!simple_decoder_.Process(rotated_inputs.data(), wet_outputs, frames)) return false;
+    } else if (params_.render_mode == RenderMode::OFF && Halo() == nullptr) {
+        if (!simple_decoder_.Process(encoded_inputs.data(), wet_outputs, frames)) return false;
+    } else if (params_.render_mode == RenderMode::KU100) {
+        float *decoded_outputs[2]{decoded_.ChannelData(0), decoded_.ChannelData(1)};
+        if (!decoder_.Process(rotated_inputs.data(), decoded_outputs, frames)) {
+            error_ = decoder_.Error();
+            return false;
+        }
+        const float *decoded_inputs[2]{decoded_outputs[0], decoded_outputs[1]};
+        if (!headphone_eq_.Process(decoded_inputs, wet_outputs, frames)) {
+            error_ = headphone_eq_.Error();
+            return false;
+        }
     }
 
     for (std::size_t frame = 0; frame < frames; ++frame) {
         for (uint32_t channel = 0; channel < 2; ++channel) {
-            float *ring = dry_delay_.data()
-                + static_cast<std::size_t>(channel) * wet_latency_frames_;
-            delayed_dry_.ChannelData(channel)[frame] = ring[dry_delay_index_];
-            ring[dry_delay_index_] = stereo[channel][frame];
+            if (wet_latency_frames_ == 0) {
+                delayed_dry_.ChannelData(channel)[frame] = stereo[channel][frame];
+            } else {
+                float *ring = dry_delay_.data()
+                    + static_cast<std::size_t>(channel) * wet_latency_frames_;
+                delayed_dry_.ChannelData(channel)[frame] = ring[dry_delay_index_];
+                ring[dry_delay_index_] = stereo[channel][frame];
+            }
         }
-        dry_delay_index_ = (dry_delay_index_ + 1U) % wet_latency_frames_;
+        if (wet_latency_frames_ != 0) {
+            dry_delay_index_ = (dry_delay_index_ + 1U) % wet_latency_frames_;
+        }
         const float wet = wet_smoother_.Next();
         const float dry_gain = std::cos(wet * kHalfPi);
         const float wet_gain = std::sin(wet * kHalfPi);
         const float output_gain = gain_smoother_.Next();
         for (uint32_t channel = 0; channel < 2; ++channel) {
             mix_.ChannelData(channel)[frame] = (delayed_dry_.ChannelData(channel)[frame] * dry_gain
-                + equalized_outputs[channel][frame] * wet_gain) * output_gain;
+                + wet_outputs[channel][frame] * wet_gain) * output_gain;
         }
     }
     const float *mix_inputs[2]{mix_.ChannelData(0), mix_.ChannelData(1)};
@@ -153,9 +192,12 @@ void IemPipeline::ResetAngles() noexcept {
 
 void IemPipeline::Reset() noexcept {
     if (IemEncoder *encoder = Encoder()) encoder->Reset();
-    rotator_.Reset();
-    decoder_.Reset();
-    headphone_eq_.Reset();
+    if (HaloEncoder *halo = Halo()) halo->Reset();
+    if (params_.render_mode != RenderMode::OFF) rotator_.Reset();
+    if (params_.render_mode == RenderMode::KU100) {
+        decoder_.Reset();
+        headphone_eq_.Reset();
+    }
     limiter_.Reset();
     ClearRuntimeBuffers();
     wet_smoother_.Reset(std::clamp(params_.wet, 0.0F, 1.0F));
@@ -188,17 +230,29 @@ bool IemPipeline::IsFrozen() const noexcept {
 IemEncoder *IemPipeline::Encoder() noexcept {
     return std::visit([](auto &encoder) -> IemEncoder * {
         using Type = std::decay_t<decltype(encoder)>;
-        if constexpr (std::is_same_v<Type, std::monostate>) return nullptr;
-        else return &encoder;
+        if constexpr (std::is_same_v<Type, StereoEncoder>
+            || std::is_same_v<Type, MultiEncoder>
+            || std::is_same_v<Type, GranularEncoder>) return &encoder;
+        else return nullptr;
     }, encoder_);
 }
 
 const IemEncoder *IemPipeline::Encoder() const noexcept {
     return std::visit([](const auto &encoder) -> const IemEncoder * {
         using Type = std::decay_t<decltype(encoder)>;
-        if constexpr (std::is_same_v<Type, std::monostate>) return nullptr;
-        else return &encoder;
+        if constexpr (std::is_same_v<Type, StereoEncoder>
+            || std::is_same_v<Type, MultiEncoder>
+            || std::is_same_v<Type, GranularEncoder>) return &encoder;
+        else return nullptr;
     }, encoder_);
+}
+
+HaloEncoder *IemPipeline::Halo() noexcept {
+    return std::get_if<HaloEncoder>(&encoder_);
+}
+
+const HaloEncoder *IemPipeline::Halo() const noexcept {
+    return std::get_if<HaloEncoder>(&encoder_);
 }
 
 bool IemPipeline::PrepareEncoder(const IemParams &params, std::size_t max_frames) noexcept {
@@ -213,12 +267,16 @@ bool IemPipeline::PrepareEncoder(const IemParams &params, std::size_t max_frames
     case EncoderMode::GRANULAR:
         encoder_.emplace<GranularEncoder>();
         break;
+    case EncoderMode::HALO:
+        encoder_.emplace<HaloEncoder>();
+        return Halo()->Prepare(config);
     }
     return Encoder() != nullptr && Encoder()->Prepare(config);
 }
 
 void IemPipeline::ClearRuntimeBuffers() noexcept {
     encoded_.Clear();
+    halo_bed_.Clear();
     rotated_.Clear();
     decoded_.Clear();
     equalized_.Clear();

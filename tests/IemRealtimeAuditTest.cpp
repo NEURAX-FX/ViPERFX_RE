@@ -25,7 +25,8 @@ bool Check(bool condition, const char *message) {
 
 bool TestMaximumConfigurationRealtimePath() {
     iem::IemParams params{};
-    params.encoder_mode = iem::EncoderMode::GRANULAR;
+    params.encoder_mode = iem::EncoderMode::HALO;
+    params.render_mode = iem::RenderMode::KU100;
     params.order = 3;
     params.latency_profile = iem::LatencyProfile::STABLE;
     params.decoder.headphone_eq = iem::HeadphoneEqId::SHURE_SRH940;

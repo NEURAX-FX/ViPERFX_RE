@@ -25,6 +25,56 @@ HaloStft::~HaloStft() {
     Release();
 }
 
+HaloStft::HaloStft(HaloStft &&other) noexcept {
+    MoveFrom(other);
+}
+
+HaloStft &HaloStft::operator=(HaloStft &&other) noexcept {
+    if (this != &other) {
+        Release();
+        MoveFrom(other);
+    }
+    return *this;
+}
+
+void HaloStft::MoveFrom(HaloStft &other) noexcept {
+    prepared_ = other.prepared_;
+    setup_ = other.setup_;
+    work_ = other.work_;
+    fft_in_ = other.fft_in_;
+    fft_out_ = other.fft_out_;
+    window_ = other.window_;
+    analysis_left_ = other.analysis_left_;
+    analysis_right_ = other.analysis_right_;
+    synth_ = other.synth_;
+    left_re_ = other.left_re_;
+    left_im_ = other.left_im_;
+    right_re_ = other.right_re_;
+    right_im_ = other.right_im_;
+    analysis_fill_ = other.analysis_fill_;
+    synth_fill_ = other.synth_fill_;
+    synth_frames_ = other.synth_frames_;
+    for (uint32_t index = 0; index < kHistoryFrames; ++index) {
+        history_map_[index] = other.history_map_[index];
+    }
+    other.prepared_ = false;
+    other.setup_ = nullptr;
+    other.work_ = nullptr;
+    other.fft_in_ = nullptr;
+    other.fft_out_ = nullptr;
+    other.window_ = nullptr;
+    other.analysis_left_ = nullptr;
+    other.analysis_right_ = nullptr;
+    other.synth_ = nullptr;
+    other.left_re_ = nullptr;
+    other.left_im_ = nullptr;
+    other.right_re_ = nullptr;
+    other.right_im_ = nullptr;
+    other.analysis_fill_ = 0;
+    other.synth_fill_ = 0;
+    other.synth_frames_ = 0;
+}
+
 void HaloStft::Release() noexcept {
     if (work_ != nullptr) pffft_aligned_free(work_);
     if (fft_in_ != nullptr) pffft_aligned_free(fft_in_);

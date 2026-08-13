@@ -142,6 +142,63 @@ bool TestWetPathEqFreezeAndReset() {
             [](float value) { return value == 0.0F; }), "pipeline reset clears histories");
 }
 
+bool TestRenderModesAndHaloBranch() {
+    constexpr std::size_t kTotal = 8192;
+    std::vector<float> left(kTotal, 0.0F), right(kTotal, 0.0F);
+    left[0] = 1.0F;
+    right[0] = -0.5F;
+
+    iem::IemParams off_params{};
+    off_params.encoder_mode = iem::EncoderMode::HALO;
+    off_params.render_mode = iem::RenderMode::OFF;
+    off_params.order = 1;
+    off_params.latency_profile = iem::LatencyProfile::STABLE;
+    off_params.wet = 1.0F;
+    off_params.limiter.enabled = false;
+    iem::IemPipeline off;
+    if (!Check(off.Prepare(off_params, kBlock), "prepare Halo Off pipeline")) return false;
+    if (!Check(off.WetLatencyFrames() == 1024U, "Halo Off includes STFT latency")) return false;
+    std::vector<float> off_left(kTotal), off_right(kTotal);
+    if (!Render(off, left, right, off_left, off_right)) return false;
+
+    iem::IemParams ku100_params = off_params;
+    ku100_params.render_mode = iem::RenderMode::KU100;
+    iem::IemPipeline ku100;
+    if (!Check(ku100.Prepare(ku100_params, kBlock), "prepare Halo KU100 pipeline")) return false;
+    if (!Check(ku100.WetLatencyFrames() > off.WetLatencyFrames(),
+            "KU100 adds decoder latency")) return false;
+    std::vector<float> ku100_left(kTotal), ku100_right(kTotal);
+    if (!Render(ku100, left, right, ku100_left, ku100_right)) return false;
+    if (!Check(off_left != ku100_left || off_right != ku100_right,
+            "Halo Off and KU100 produce distinct stereo")) return false;
+
+    iem::IemParams simple_params = off_params;
+    simple_params.render_mode = iem::RenderMode::SIMPLE;
+    iem::IemPipeline simple_zero;
+    if (!Check(simple_zero.Prepare(simple_params, kBlock), "prepare Halo Simple pipeline")) return false;
+    std::vector<float> simple_zero_left(kTotal), simple_zero_right(kTotal);
+    if (!Render(simple_zero, left, right, simple_zero_left, simple_zero_right)) return false;
+
+    simple_params.rotation.yaw_centidegrees = 9000;
+    iem::IemPipeline simple_yaw;
+    if (!Check(simple_yaw.Prepare(simple_params, kBlock), "prepare rotated Halo Simple pipeline")) return false;
+    std::vector<float> simple_yaw_left(kTotal), simple_yaw_right(kTotal);
+    if (!Render(simple_yaw, left, right, simple_yaw_left, simple_yaw_right)) return false;
+    if (!Check(simple_zero_left != simple_yaw_left || simple_zero_right != simple_yaw_right,
+            "Simple mode applies scene rotation")) return false;
+
+    iem::IemParams stereo_off{};
+    stereo_off.render_mode = iem::RenderMode::OFF;
+    stereo_off.decoder.headphone_eq = static_cast<iem::HeadphoneEqId>(22);
+    stereo_off.wet = 1.0F;
+    stereo_off.limiter.enabled = false;
+    iem::IemPipeline non_halo_off;
+    return Check(non_halo_off.Prepare(stereo_off, kBlock),
+        "Stereo Off skips KU100 and headphone-EQ resource preparation")
+        && Check(non_halo_off.WetLatencyFrames() == 0U,
+            "Stereo Off has no decoder latency");
+}
+
 bool TestFaultAndNoAllocation() {
     iem::IemParams params{};
     params.wet = 0.0F;
@@ -182,6 +239,7 @@ int main() {
     if (!TestProfileBoundsAndModes()) return 1;
     if (!TestDryAlignmentGainAndLimiter()) return 1;
     if (!TestWetPathEqFreezeAndReset()) return 1;
+    if (!TestRenderModesAndHaloBranch()) return 1;
     if (!TestFaultAndNoAllocation()) return 1;
     std::puts("IEM pipeline tests passed");
     return 0;

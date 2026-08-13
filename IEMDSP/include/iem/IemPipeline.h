@@ -2,11 +2,13 @@
 
 #include "iem/AlignedPlanarBuffer.h"
 #include "iem/GranularEncoder.h"
+#include "iem/HaloEncoder.h"
 #include "iem/HeadphoneEq.h"
 #include "iem/LinkedLookaheadLimiter.h"
 #include "iem/LinearSmoother.h"
 #include "iem/MultiEncoder.h"
 #include "iem/SceneRotator.h"
+#include "iem/SimpleDecoder.h"
 #include "iem/StereoEncoder.h"
 
 #include <cstddef>
@@ -59,20 +61,24 @@ public:
 
 private:
     using EncoderVariant = std::variant<std::monostate,
-        StereoEncoder, MultiEncoder, GranularEncoder>;
+        StereoEncoder, MultiEncoder, GranularEncoder, HaloEncoder>;
 
     IemEncoder *Encoder() noexcept;
     const IemEncoder *Encoder() const noexcept;
+    HaloEncoder *Halo() noexcept;
+    const HaloEncoder *Halo() const noexcept;
     bool PrepareEncoder(const IemParams &params, std::size_t max_frames) noexcept;
     void ClearRuntimeBuffers() noexcept;
 
     IemParams params_{};
     EncoderVariant encoder_{};
     SceneRotator rotator_{};
+    SimpleDecoder simple_decoder_{};
     Ku100Decoder decoder_{};
     HeadphoneEq headphone_eq_{};
     LinkedLookaheadLimiter limiter_{};
     AlignedPlanarBuffer encoded_{};
+    AlignedPlanarBuffer halo_bed_{};
     AlignedPlanarBuffer rotated_{};
     AlignedPlanarBuffer decoded_{};
     AlignedPlanarBuffer equalized_{};

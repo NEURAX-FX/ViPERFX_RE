@@ -34,7 +34,7 @@ bool SimpleDecoder::Prepare(uint32_t order) noexcept {
 }
 
 bool SimpleDecoder::Process(
-    float *const ambisonics[kMaxAmbisonicsChannels],
+    const float *const ambisonics[kMaxAmbisonicsChannels],
     float *const stereo[2],
     std::size_t frames
 ) noexcept {

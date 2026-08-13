@@ -28,6 +28,8 @@ public:
 
     HaloStft(const HaloStft &) = delete;
     HaloStft &operator=(const HaloStft &) = delete;
+    HaloStft(HaloStft &&other) noexcept;
+    HaloStft &operator=(HaloStft &&other) noexcept;
 
     bool Prepare(std::size_t max_frames) noexcept;
     void Reset() noexcept;
@@ -48,6 +50,7 @@ public:
 
 private:
     void Release() noexcept;
+    void MoveFrom(HaloStft &other) noexcept;
     void AnalyzeChannel(const float *time, float *re, float *im) noexcept;
     bool InverseOne(const float re[kBins], const float im[kBins], float *ola) noexcept;
 
