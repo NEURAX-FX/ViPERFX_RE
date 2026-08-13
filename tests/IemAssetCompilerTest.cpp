@@ -111,6 +111,42 @@ bool TestManifest() {
             && iem::resources::FindHeadphoneEq(23) == nullptr, "reject invalid EQ model");
 }
 
+bool TestDialogNetResource() {
+    const std::filesystem::path path =
+        std::filesystem::path(IEM_ASSET_SOURCE_DIR) / "halo/dialog.net";
+    if (!Check(iem::tools::Sha256File(path)
+            == "652cbd597b9afbd82eb9b39fe80e3e825a381e448c3c2a269c07842f88eb5b72",
+            "dialog.net source hash")) return false;
+    const auto &net = iem::resources::DialogNet();
+    return Check(net.connection_count == 391, "dialog.net connection count")
+        && Check(net.weights != nullptr, "dialog.net weights are present")
+        && Check(std::string(net.source_sha256)
+            == "652cbd597b9afbd82eb9b39fe80e3e825a381e448c3c2a269c07842f88eb5b72",
+            "dialog.net embedded hash");
+}
+
+bool TestDialogNetHashFailure() {
+    const std::filesystem::path root = std::filesystem::temp_directory_path()
+        / "iem-dialog-net-corruption-test";
+    std::error_code error;
+    std::filesystem::remove_all(root, error);
+    std::filesystem::copy(IEM_ASSET_SOURCE_DIR, root,
+        std::filesystem::copy_options::recursive, error);
+    if (!Check(!error, "copy source fixture for dialog.net")) return false;
+    std::fstream file(root / "halo/dialog.net",
+        std::ios::in | std::ios::out | std::ios::binary);
+    file.seekp(0);
+    const char corrupt = 'X';
+    file.write(&corrupt, 1);
+    file.close();
+    const auto result = iem::tools::CompilePinnedAssets(root, root / "generated");
+    const bool generated = std::filesystem::exists(root / "generated" / "IemResources.cpp");
+    std::filesystem::remove_all(root, error);
+    return Check(!result.success && result.error.find("SHA-256") != std::string::npos,
+            "corrupted dialog.net is rejected by hash")
+        && Check(!generated, "failed compile writes no generated files");
+}
+
 bool TestHashFailure() {
     const std::filesystem::path root = std::filesystem::temp_directory_path()
         / "iem-asset-corruption-test";
@@ -138,6 +174,8 @@ int main() {
     if (!TestReproducibleCompiler()) return 1;
     if (!TestManifest()) return 1;
     if (!TestHashFailure()) return 1;
+    if (!TestDialogNetResource()) return 1;
+    if (!TestDialogNetHashFailure()) return 1;
     std::puts("IEM asset compiler tests passed");
     return 0;
 }

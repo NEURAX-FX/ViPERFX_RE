@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -21,6 +22,10 @@ namespace iem::tools {
 namespace {
 
 constexpr uint32_t kOutputRate = 96000;
+constexpr const char *kDialogNetPath = "halo/dialog.net";
+constexpr const char *kDialogNetSha256 =
+    "652cbd597b9afbd82eb9b39fe80e3e825a381e448c3c2a269c07842f88eb5b72";
+constexpr uint32_t kDialogNetConnections = 391;
 
 struct SourceSpec {
     const char *path;
@@ -100,6 +105,85 @@ bool LoadPinnedHashes(const std::filesystem::path &source_directory,
     }
     if (hashes.size() != kSources.size()) {
         error = "SHA256SUMS must contain exactly 26 entries"; return false;
+    }
+    return true;
+}
+
+bool LoadDialogNet(const std::filesystem::path &source_directory,
+    std::vector<float> &weights, std::string &hash, std::string &error) {
+    const std::filesystem::path path = source_directory / kDialogNetPath;
+    hash = Sha256File(path);
+    if (hash != kDialogNetSha256) {
+        error = "SHA-256 mismatch for " + path.string();
+        return false;
+    }
+    std::ifstream input(path);
+    if (!input) {
+        error = "cannot open " + path.string();
+        return false;
+    }
+    std::string line;
+    auto trim_cr = [](std::string &value) {
+        if (!value.empty() && value.back() == '\r') value.pop_back();
+    };
+    if (!std::getline(input, line)) {
+        error = "dialog.net is not FANN_FLO_2.1";
+        return false;
+    }
+    trim_cr(line);
+    if (line != "FANN_FLO_2.1") {
+        error = "dialog.net is not FANN_FLO_2.1";
+        return false;
+    }
+    bool found_layers = false;
+    while (std::getline(input, line)) {
+        trim_cr(line);
+        if (line.rfind("layer_sizes=", 0) == 0) {
+            if (line != "layer_sizes=38 11 2 ") {
+                error = "dialog.net topology mismatch";
+                return false;
+            }
+            found_layers = true;
+        }
+        if (line.rfind("connections (connected_to_neuron, weight)=", 0) == 0) {
+            const auto start = line.find('=');
+            if (start == std::string::npos) {
+                error = "dialog.net connections missing";
+                return false;
+            }
+            const std::string pairs = line.substr(start + 1);
+            std::size_t cursor = 0;
+            while (cursor < pairs.size()) {
+                const auto open = pairs.find('(', cursor);
+                if (open == std::string::npos) break;
+                const auto close = pairs.find(')', open);
+                if (close == std::string::npos) {
+                    error = "unterminated dialog.net connection";
+                    return false;
+                }
+                const auto comma = pairs.find(',', open);
+                if (comma == std::string::npos || comma > close) {
+                    error = "invalid dialog.net connection pair";
+                    return false;
+                }
+                char *end = nullptr;
+                const float weight = std::strtof(pairs.c_str() + comma + 1, &end);
+                if (end == pairs.c_str() + comma + 1) {
+                    error = "invalid dialog.net weight";
+                    return false;
+                }
+                weights.push_back(weight);
+                cursor = close + 1;
+            }
+        }
+    }
+    if (!found_layers) {
+        error = "dialog.net missing layer_sizes";
+        return false;
+    }
+    if (weights.size() != kDialogNetConnections) {
+        error = "dialog.net connection count mismatch";
+        return false;
     }
     return true;
 }
@@ -273,7 +357,10 @@ void EmitFloatArray(std::ostream &output, const std::string &name,
 }
 
 bool WriteGenerated(const std::filesystem::path &directory,
-    const std::vector<GeneratedResource> &resources, std::string &error) {
+    const std::vector<GeneratedResource> &resources,
+    const std::vector<float> &dialog_weights,
+    const std::string &dialog_hash,
+    std::string &error) {
     std::error_code filesystem_error;
     std::filesystem::create_directories(directory, filesystem_error);
     if (filesystem_error) { error = filesystem_error.message(); return false; }
@@ -285,19 +372,22 @@ bool WriteGenerated(const std::filesystem::path &directory,
         << "struct Ku100Resource { uint32_t order; uint32_t input_channels; uint32_t frames; "
         << "const float *ir; const char *source_sha256; const char *output_sha256; };\n"
         << "struct HeadphoneEqResource { int32_t id; const char *display_name; uint32_t channels; uint32_t frames; "
-        << "const float *impulse; const char *source_sha256; const char *output_sha256; };\n\n"
+        << "const float *impulse; const char *source_sha256; const char *output_sha256; };\n"
+        << "struct DialogNetResource { uint32_t connection_count; const float *weights; const char *source_sha256; };\n\n"
         << "constexpr uint32_t kKu100ResourceCount = 3;\n"
         << "constexpr uint32_t kHeadphoneEqResourceCount = 23;\n"
         << "extern const char kUpstreamRepository[];\nextern const char kUpstreamCommit[];\n"
         << "extern const char kKu100Attribution[];\nextern const char kRenderingAttribution[];\n"
         << "const Ku100Resource *FindKu100(uint32_t order) noexcept;\n"
-        << "const HeadphoneEqResource *FindHeadphoneEq(int32_t id) noexcept;\n\n"
+        << "const HeadphoneEqResource *FindHeadphoneEq(int32_t id) noexcept;\n"
+        << "const DialogNetResource &DialogNet() noexcept;\n\n"
         << "} // namespace iem::resources\n";
 
     source << "#include \"IemResourceManifest.h\"\n\nnamespace iem::resources {\nnamespace {\n\n";
     for (const GeneratedResource &resource : resources) {
         EmitFloatArray(source, SymbolName(resource), resource.samples);
     }
+    EmitFloatArray(source, "kDialogNetWeights", dialog_weights);
     source << "const Ku100Resource kKu100[] = {\n";
     for (const GeneratedResource &resource : resources) {
         if (resource.spec->order <= 0) continue;
@@ -313,7 +403,9 @@ bool WriteGenerated(const std::filesystem::path &directory,
             << SymbolName(resource) << ", \""
             << resource.source_sha256 << "\", \"" << resource.output_sha256 << "\"},\n";
     }
-    source << "};\n\n} // namespace\n\n"
+    source << "};\n\nconst DialogNetResource kDialogNet = {"
+        << kDialogNetConnections << ", kDialogNetWeights, \"" << dialog_hash << "\"};\n\n"
+        << "} // namespace\n\n"
         << "const char kUpstreamRepository[] = \"https://git.iem.at/audioplugins/IEMPluginSuite.git\";\n"
         << "const char kUpstreamCommit[] = \"39de1dd5883f1bd8d65fe1662487f2470a1d7b55\";\n"
         << "const char kKu100Attribution[] = \"Neumann KU100 far-field HRIR/HRTF compilation by Benjamin Bernschuetz\";\n"
@@ -322,6 +414,8 @@ bool WriteGenerated(const std::filesystem::path &directory,
         << "    return order >= 1 && order <= 3 ? &kKu100[order - 1] : nullptr;\n}\n\n"
         << "const HeadphoneEqResource *FindHeadphoneEq(int32_t id) noexcept {\n"
         << "    return id >= 0 && id < 23 ? &kHeadphoneEq[id] : nullptr;\n}\n\n"
+        << "const DialogNetResource &DialogNet() noexcept {\n"
+        << "    return kDialogNet;\n}\n\n"
         << "} // namespace iem::resources\n";
     return static_cast<bool>(header) && static_cast<bool>(source);
 }
@@ -333,6 +427,11 @@ CompileResult CompilePinnedAssets(const std::filesystem::path &source_directory,
     std::map<std::string, std::string> hashes;
     std::string error;
     if (!LoadPinnedHashes(source_directory, hashes, error)) return {false, error};
+    std::vector<float> dialog_weights;
+    std::string dialog_hash;
+    if (!LoadDialogNet(source_directory, dialog_weights, dialog_hash, error)) {
+        return {false, error};
+    }
     std::vector<GeneratedResource> resources;
     resources.reserve(kSources.size());
     for (const SourceSpec &spec : kSources) {
@@ -348,7 +447,9 @@ CompileResult CompilePinnedAssets(const std::filesystem::path &source_directory,
         if (!Generate(spec, hash->second, wav, generated, error)) return {false, error};
         resources.push_back(std::move(generated));
     }
-    if (!WriteGenerated(output_directory, resources, error)) return {false, error};
+    if (!WriteGenerated(output_directory, resources, dialog_weights, dialog_hash, error)) {
+        return {false, error};
+    }
     return {true, {}};
 }
 

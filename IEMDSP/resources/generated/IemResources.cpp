@@ -36469,6 +36469,75 @@ alignas(64) const float kHeadphoneEq22[] = {
     -0x1.5fc23p-28F, -0x1.1535ap-29F
 };
 
+alignas(64) const float kDialogNetWeights[] = {
+    -0x1.7307bep+9F, 0x1.a24f8p+0F, 0x1.41eeap+7F, 0x1.567d4ep+0F, -0x1.4dedb4p+7F, 0x1.08d244p+2F,
+    -0x1.738678p+10F, 0x1.ed67d2p+2F, -0x1.77p+10F, 0x1.e79588p+1F, -0x1.617e84p+10F, 0x1.0d3efp+10F,
+    -0x1.4df3bp+10F, 0x1.6c8eacp+10F, 0x1.80c4aep+7F, 0x1.00852cp+9F, -0x1.705094p+10F, 0x1.6dedfp+10F,
+    -0x1.77p+10F, 0x1.6e5fb4p+10F, -0x1.73a984p+10F, 0x1.072242p+9F, -0x1.724fdp+10F, 0x1.9a11bep+9F,
+    0x1.c9e3cap+9F, -0x1.622742p+1F, 0x1.26e762p+4F, -0x1.5b989cp+9F, 0x1.d0e45ep+3F, 0x1.abdd68p+2F,
+    0x1.b4091p+8F, 0x1.60c4e4p+1F, 0x1.3659d6p-1F, 0x1.57ff74p-2F, 0x1.76c77cp+10F, 0x1.010ea4p+8F,
+    0x1.75a5cap+10F, 0x1.2146c8p+6F, 0x1.77p+10F, 0x1.0d0884p-1F, 0x1.77p+10F, 0x1.2f907cp+2F,
+    0x1.d9248ap+7F, 0x1.609f7ep+1F, -0x1.876ab8p+4F, 0x1.3b6bdap+1F, -0x1.77p+10F, 0x1.d6da92p+2F,
+    0x1.01f678p+8F, 0x1.0c74dcp+10F, -0x1.fe5c0ap+5F, -0x1.7144a2p+10F, 0x1.6037b2p+8F, 0x1.571b08p+4F,
+    0x1.2326e2p+8F, -0x1.342ee4p+7F, -0x1.c7b7dp+8F, -0x1.5b459cp+9F, -0x1.63626ep+5F, -0x1.0d82a4p+9F,
+    -0x1.9743d6p+6F, -0x1.75467ap+10F, 0x1.491f7cp+8F, -0x1.3fcc4p+3F, 0x1.3fcb5cp+1F, -0x1.a051e8p+6F,
+    -0x1.fb2786p+0F, 0x1.29507ep+2F, 0x1.3121cp+7F, -0x1.e562ccp+2F, -0x1.32737ep+6F, -0x1.8361p+3F,
+    0x1.b43d5ap+6F, 0x1.9be144p+5F, 0x1.54f1eap+8F, 0x1.72964ep+2F, 0x1.76bf72p+10F, 0x1.54aa52p+2F,
+    0x1.77p+10F, 0x1.28ba12p+3F, 0x1.4398e8p+9F, 0x1.a7a626p+2F, 0x1.37a008p+10F, 0x1.77e2b4p+2F,
+    -0x1.77p+10F, 0x1.08e5f8p+3F, 0x1.8d498p+9F, 0x1.84d716p+2F, 0x1.623becp+6F, -0x1.6ed07ap+10F,
+    0x1.73bcbep+10F, -0x1.2ef226p+10F, 0x1.03c67p+10F, -0x1.673576p+10F, -0x1.77p+10F, -0x1.7584e8p+10F,
+    -0x1.ae2b9ap+6F, -0x1.64d94cp+10F, -0x1.7751eap+9F, -0x1.75a0e4p+10F, 0x1.86b8e6p+7F, 0x1.03f05ap+9F,
+    0x1.d59ae2p+0F, -0x1.8562ep+9F, -0x1.b2250ep+0F, 0x1.36152ap+6F, 0x1.56d234p+7F, 0x1.903be4p+9F,
+    -0x1.6364fcp+10F, 0x1.7629ccp+10F, 0x1.2943p+8F, 0x1.76ffep+10F, 0x1.435d6ap+10F, 0x1.52c5bp+2F,
+    -0x1.26a83ep-1F, 0x1.06ced4p-2F, 0x1.ba5a0ap-2F, -0x1.8cec54p+0F, 0x1.f04258p-1F, -0x1.7f9dd6p-2F,
+    -0x1.bb57dap+1F, -0x1.0bc73p-15F, -0x1.647908p+3F, -0x1.a7b81cp-1F, -0x1.4c52cap-1F, -0x1.72fd2p-3F,
+    0x1.6231bcp+2F, -0x1.39a95ap+2F, 0x1.81f52p+2F, -0x1.8f6466p+0F, 0x1.03e55cp+3F, -0x1.59e2f4p+2F,
+    0x1.320776p+2F, -0x1.c7643cp+2F, 0x1.19339ep+2F, -0x1.25135ep+2F, 0x1.6f8986p+2F, -0x1.7f9e0ap+1F,
+    -0x1.6c1b2p-2F, 0x1.036e7cp+3F, -0x1.426f72p+1F, 0x1.294f3cp+2F, -0x1.2c9b2cp+2F, 0x1.30a672p+0F,
+    0x1.66b202p+0F, 0x1.09d26cp+1F, 0x1.d3f15ap+2F, 0x1.0e6304p+2F, -0x1.804364p+0F, 0x1.788036p+1F,
+    -0x1.e7c48ap+2F, -0x1.b42aecp-1F, -0x1.e1d2ecp+3F, 0x1.37208cp+3F, 0x1.d848ccp+2F, 0x1.011c6ap+3F,
+    -0x1.353ef8p+2F, 0x1.fa1b0ep+2F, 0x1.1bec72p+5F, 0x1.fb81cap+2F, -0x1.05deccp+6F, 0x1.70ef5p+2F,
+    0x1.78cdd8p+3F, 0x1.34c33ap+2F, -0x1.491356p+3F, -0x1.74ca9ep+4F, -0x1.6f2aeap+5F, 0x1.e4e61ap+3F,
+    -0x1.0daddep+5F, -0x1.3ebbe2p+3F, -0x1.a08d56p+3F, 0x1.014dc8p+4F, -0x1.078f2p+4F, 0x1.3783e4p+4F,
+    -0x1.6197d6p+4F, -0x1.ced8a4p+0F, 0x1.3f283ap+4F, 0x1.4cb2c4p+2F, 0x1.353744p+1F, 0x1.1252bep+4F,
+    -0x1.d5cadcp+3F, -0x1.5ce426p+2F, 0x1.b7f65cp+2F, -0x1.e006c6p+5F, 0x1.3599e2p+4F, -0x1.135bf4p+3F,
+    0x1.a535cep+4F, -0x1.447fbep+1F, 0x1.ee63bap+2F, 0x1.1615c2p+0F, -0x1.a1d9dcp+7F, 0x1.24ae5ap+0F,
+    -0x1.3276f8p+7F, 0x1.ae3ee4p+0F, -0x1.130bdep+5F, -0x1.7f376cp+1F, -0x1.116f5ap+5F, -0x1.925788p+0F,
+    0x1.77p+10F, -0x1.0cd6eep+1F, -0x1.19de9p+4F, 0x1.0ad99cp+10F, -0x1.ad420ap+7F, -0x1.8aa9fap+7F,
+    -0x1.373aeap+9F, -0x1.09aa6cp+6F, -0x1.5496c6p+7F, -0x1.382568p+7F, -0x1.f58f6p+5F, 0x1.7b8f0cp+5F,
+    -0x1.2491cap+6F, -0x1.6c595cp+5F, -0x1.3e8f2ep+6F, 0x1.525cap+3F, -0x1.24d18ep+4F, 0x1.d237cep+2F,
+    0x1.14eb8ap+5F, 0x1.f75978p+7F, 0x1.5e55fap+2F, 0x1.73c892p+2F, -0x1.24810ep+5F, 0x1.1f811ap-1F,
+    0x1.b911fp+0F, 0x1.81a824p+2F, -0x1.9b8592p+6F, -0x1.39e04ap+6F, 0x1.ccacep+4F, 0x1.2a0c64p+2F,
+    -0x1.77p+10F, 0x1.48546ap+2F, -0x1.77p+10F, 0x1.fde0dep+1F, -0x1.77p+10F, 0x1.3ee1b8p+1F,
+    -0x1.76fa48p+10F, 0x1.f0d5dep+1F, 0x1.77p+10F, 0x1.0cba9ap+2F, -0x1.66a074p+10F, -0x1.3d6fdcp+9F,
+    0x1.77p+10F, 0x1.65b304p+10F, 0x1.73b3f8p+10F, -0x1.543876p+10F, 0x1.77p+10F, 0x1.7a12f8p+9F,
+    0x1.77p+10F, 0x1.74c85cp+10F, 0x1.2aeee2p+7F, -0x1.51ba08p+10F, 0x1.77p+10F, 0x1.75dc8p+10F,
+    0x1.feb772p+8F, -0x1.7684cep+10F, 0x1.d215f4p+0F, -0x1.763868p+10F, 0x1.3cbfaap+1F, -0x1.688b82p+4F,
+    0x1.e6cap+6F, -0x1.7163e6p+7F, 0x1.9690e6p+2F, -0x1.7676d6p+10F, 0x1.a15f2cp+8F, -0x1.e992bap+4F,
+    0x1.72d05cp+10F, 0x1.8400aep+5F, -0x1.449f8cp+1F, 0x1.92ee98p+2F, -0x1.c20746p+1F, 0x1.e5cdecp+2F,
+    -0x1.977aeep+0F, 0x1.2b18aep+3F, 0x1.be63e4p+1F, 0x1.812fc6p+2F, -0x1.65f8b2p+5F, 0x1.a6fde2p+2F,
+    0x1.5da7ecp+0F, 0x1.b0952ep+2F, -0x1.0b1df6p+2F, 0x1.f28444p+1F, -0x1.170d9ep+2F, 0x1.f5b54ep+1F,
+    -0x1.28c7bcp+2F, 0x1.87ccf2p+1F, -0x1.d5b2cep+1F, 0x1.d4222ep+1F, -0x1.795fcep+1F, 0x1.072128p+1F,
+    -0x1.c82facp+2F, 0x1.353c9ep+2F, -0x1.4729ap+1F, 0x1.137cc4p+3F, -0x1.af81f4p+0F, -0x1.3339dp-3F,
+    -0x1.098038p+1F, 0x1.679972p+1F, 0x1.21701p+1F, 0x1.e6f38p+1F, -0x1.9f4f24p+1F, 0x1.1390f2p+1F,
+    0x1.0f38fap-1F, 0x1.21f0ep+4F, -0x1.8dcfcp+3F, 0x1.ab0898p+2F, 0x1.0ee6fep+0F, 0x1.e90546p+2F,
+    -0x1.d2f254p+2F, 0x1.036d02p+3F, -0x1.c0398ep+2F, 0x1.3afbc4p+3F, 0x1.3cf148p-1F, 0x1.623f4ep+2F,
+    -0x1.d5bd3p+3F, 0x1.0ac332p+3F, -0x1.85cccap+3F, 0x1.0802e8p+3F, 0x1.734bc6p+4F, -0x1.8b4bbcp+2F,
+    0x1.e508d6p+4F, -0x1.856efap+3F, 0x1.08becep+4F, -0x1.9b80c4p+0F, 0x1.7cb0a6p+3F, -0x1.cbb8f4p+2F,
+    0x1.207d08p+4F, -0x1.2e02c2p+2F, 0x1.06245p+5F, -0x1.cf4aep+3F, 0x1.93dbd2p+5F, 0x1.6a75fp+1F,
+    -0x1.b3f6c8p+1F, -0x1.3a1952p+5F, -0x1.3afbb6p+4F, -0x1.23ad24p+2F, 0x1.868e4ap+2F, -0x1.afb784p+1F,
+    -0x1.8bfad4p+0F, -0x1.7e917ap+3F, 0x1.b8a13ap-1F, 0x1.4198ccp+0F, 0x1.9e9a1ep+0F, -0x1.4d5f3cp+3F,
+    0x1.9731aap+0F, 0x1.5632acp-13F, 0x1.b3cceep+1F, 0x1.eb5f22p-15F, 0x1.bf66ap+1F, -0x1.0c6804p-13F,
+    0x1.a8c9fap+1F, -0x1.48a69ap+1F, -0x1.548f74p+2F, 0x1.e8b5d2p-15F, 0x1.205b3ap+0F, -0x1.69ce6p-16F,
+    0x1.82ee54p+0F, -0x1.169be6p+0F, 0x1.5670eap-1F, -0x1.8513a8p+0F, -0x1.d78012p-1F, -0x1.b7947p-3F,
+    -0x1.6ce5fep-1F, -0x1.58f0d6p+0F, 0x1.0bef96p-4F, -0x1.0ebe06p+0F, 0x1.458968p+0F, -0x1.0f7f4cp+1F,
+    -0x1.291e58p+3F, -0x1.cef306p+3F, 0x1.2fde24p+3F, 0x1.c61482p+0F, 0x1.25d1eep+2F, -0x1.dcb748p+1F,
+    -0x1.776354p+0F, -0x1.7039bap+3F, -0x1.b2235ap-1F, -0x1.79949ep+2F, 0x1.bdf17p+0F, -0x1.5a4ac6p+4F,
+    0x1.374c2cp+3F, 0x1.929b38p+4F, -0x1.a0db4cp-6F, -0x1.d7532cp-5F, -0x1.20996p-5F, 0x1.616214p-1F,
+    -0x1.4fd1fp-2F, 0x1.6497bep-5F, 0x1.6955ap-6F, -0x1.5f1e3ap-2F, -0x1.27379ap-2F, 0x1.6849f6p-1F,
+    0x1.b27468p-3F
+};
+
 const Ku100Resource kKu100[] = {
     {1, 4, 514, kKu100Order1, "baf2f8929e739550891cb936750cd6cd434b208d6fed004c3c613734f6c08132", "10c9a17943b50e3182c337f36895582c9c0d0239cace6a187f24df4c605943d0"},
     {2, 9, 514, kKu100Order2, "f7bdb67f9afb718fbc2185350dd0ec6ef2b53a16c33af4861450a82697c26677", "72508b8636294540cb2c3b9aa1e90c48594ec5859655b8e3d4e9af71c53c07e7"},
@@ -36501,6 +36570,8 @@ const HeadphoneEqResource kHeadphoneEq[] = {
     {22, "Shure SRH940", 2, 4096, kHeadphoneEq22, "61cdd44e990b502466e2e6d258de3a39dbd4bdeea8872e14d87eaebb13e13103", "e35ed906cf57b15509cadccfe3dac0767063bb6b52e4719b4d1adc70b0bd6820"},
 };
 
+const DialogNetResource kDialogNet = {391, kDialogNetWeights, "652cbd597b9afbd82eb9b39fe80e3e825a381e448c3c2a269c07842f88eb5b72"};
+
 } // namespace
 
 const char kUpstreamRepository[] = "https://git.iem.at/audioplugins/IEMPluginSuite.git";
@@ -36514,6 +36585,10 @@ const Ku100Resource *FindKu100(uint32_t order) noexcept {
 
 const HeadphoneEqResource *FindHeadphoneEq(int32_t id) noexcept {
     return id >= 0 && id < 23 ? &kHeadphoneEq[id] : nullptr;
+}
+
+const DialogNetResource &DialogNet() noexcept {
+    return kDialogNet;
 }
 
 } // namespace iem::resources
