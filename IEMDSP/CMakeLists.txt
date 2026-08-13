@@ -7,6 +7,7 @@ add_library(IEMDSP STATIC
     src/FannDialogNet.cpp
     src/Grain.cpp
     src/GranularEncoder.cpp
+    src/HaloDialogExtractor.cpp
     src/HaloStft.cpp
     src/HeadphoneEq.cpp
     src/IemEngine.cpp
