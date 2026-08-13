@@ -4,6 +4,7 @@ add_library(IEMDSP STATIC
     upstream/efficientSHvanilla.cpp
     resources/generated/IemResources.cpp
     src/AlignedPlanarBuffer.cpp
+    src/FannDialogNet.cpp
     src/Grain.cpp
     src/GranularEncoder.cpp
     src/HeadphoneEq.cpp
