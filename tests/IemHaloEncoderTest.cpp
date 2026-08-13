@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -80,7 +81,141 @@ bool TestPreparedSilence() {
             }
         }
     }
-    return Check(encoder.StftLatencyFrames() == 1024, "Halo reports STFT latency");
+    return Check(encoder.StftLatencyFrames() == 1536, "Halo reports end-to-end encoder latency");
+}
+
+bool TestIdentityLatencyAndContinuity() {
+    constexpr std::size_t kBlock = 256;
+    constexpr std::size_t kFrames = 32768;
+    constexpr std::size_t kImpulseFrame = 733;
+
+    iem::HaloEncoder encoder;
+    iem::EncoderConfig config{};
+    config.max_frames = kBlock;
+    if (!Check(encoder.Prepare(config), "prepare identity HaloEncoder")) return false;
+
+    iem::IemParams params{};
+    params.halo.dialog_isolate_thousandths = 0;
+    params.halo.divergence_thousandths = 1000;
+    params.halo.fade_thousandths = 0;
+    params.halo.fade_rears_thousandths = 0;
+    params.halo.diffusion_thousandths = 0;
+    params.halo.space_thousandths = 0;
+    params.halo.rear_shelf_enable = false;
+    encoder.ApplyParams(params);
+
+    std::vector<float> input(kFrames, 0.0F);
+    std::vector<float> output(kFrames);
+    float input_storage[2][kBlock]{};
+    const float *input_block[2]{input_storage[0], input_storage[1]};
+    float bed_storage[7][kBlock]{};
+    float *bed[7]{};
+    const float *bed_const[7]{};
+    for (int channel = 0; channel < 7; ++channel) {
+        bed[channel] = bed_storage[channel];
+        bed_const[channel] = bed_storage[channel];
+    }
+    float stereo_storage[2][kBlock]{};
+    float *stereo[2]{stereo_storage[0], stereo_storage[1]};
+
+    for (std::size_t offset = 0; offset < kFrames; offset += kBlock) {
+        for (std::size_t frame = 0; frame < kBlock; ++frame) {
+            const float sample = offset + frame == kImpulseFrame ? 0.1F : 0.0F;
+            input[offset + frame] = sample;
+            input_storage[0][frame] = sample;
+            input_storage[1][frame] = sample;
+        }
+        if (!Check(encoder.ProcessBed(input_block, bed, kBlock), "process identity block")) {
+            return false;
+        }
+        iem::FoldHaloBedToStereo(bed_const, stereo, kBlock);
+        for (std::size_t frame = 0; frame < kBlock; ++frame) {
+            output[offset + frame] = stereo_storage[0][frame];
+        }
+    }
+
+    std::size_t peak_frame = 0;
+    float peak = 0.0F;
+    for (std::size_t frame = 0; frame < kFrames; ++frame) {
+        if (std::fabs(output[frame]) > peak) {
+            peak = std::fabs(output[frame]);
+            peak_frame = frame;
+        }
+    }
+    const std::size_t best_lag = peak_frame - kImpulseFrame;
+
+    std::printf("Halo identity diagnostic: best_lag=%zu reported=%u peak=%g\n",
+        best_lag, encoder.StftLatencyFrames(), peak);
+
+    return Check(best_lag == encoder.StftLatencyFrames(),
+            "reported Halo latency matches measured identity latency")
+        && Check(peak > 1.0e-3F, "identity path preserves impulse energy");
+}
+
+bool TestToneHasNoHopClicks() {
+    constexpr std::size_t kBlock = 256;
+    constexpr std::size_t kFrames = 32768;
+    constexpr float kTwoPi = 6.283185307179586F;
+
+    iem::HaloEncoder encoder;
+    iem::EncoderConfig config{};
+    config.max_frames = kBlock;
+    if (!Check(encoder.Prepare(config), "prepare tone HaloEncoder")) return false;
+
+    iem::IemParams params{};
+    params.halo.dialog_isolate_thousandths = 0;
+    params.halo.divergence_thousandths = 1000;
+    params.halo.fade_thousandths = 0;
+    params.halo.fade_rears_thousandths = 0;
+    params.halo.diffusion_thousandths = 0;
+    params.halo.space_thousandths = 0;
+    params.halo.rear_shelf_enable = false;
+    encoder.ApplyParams(params);
+
+    float input_storage[2][kBlock]{};
+    const float *input_block[2]{input_storage[0], input_storage[1]};
+    float bed_storage[7][kBlock]{};
+    float *bed[7]{};
+    const float *bed_const[7]{};
+    for (int channel = 0; channel < 7; ++channel) {
+        bed[channel] = bed_storage[channel];
+        bed_const[channel] = bed_storage[channel];
+    }
+    float stereo_storage[2][kBlock]{};
+    float *stereo[2]{stereo_storage[0], stereo_storage[1]};
+    std::vector<float> output(kFrames);
+
+    for (std::size_t offset = 0; offset < kFrames; offset += kBlock) {
+        for (std::size_t frame = 0; frame < kBlock; ++frame) {
+            const float sample = 0.1F * std::sin(
+                kTwoPi * 997.0F * static_cast<float>(offset + frame) / 96000.0F);
+            input_storage[0][frame] = sample;
+            input_storage[1][frame] = sample;
+        }
+        if (!Check(encoder.ProcessBed(input_block, bed, kBlock), "process tone block")) {
+            return false;
+        }
+        iem::FoldHaloBedToStereo(bed_const, stereo, kBlock);
+        for (std::size_t frame = 0; frame < kBlock; ++frame) {
+            output[offset + frame] = stereo_storage[0][frame];
+        }
+    }
+
+    double typical_step = 0.0;
+    double maximum_hop_step = 0.0;
+    std::size_t step_count = 0;
+    for (std::size_t frame = 8193; frame < kFrames; ++frame) {
+        const double step = std::fabs(output[frame] - output[frame - 1]);
+        typical_step += step;
+        ++step_count;
+        if (frame % iem::HaloStft::kHop == 0) {
+            maximum_hop_step = std::max(maximum_hop_step, step);
+        }
+    }
+    typical_step /= static_cast<double>(step_count);
+    const double ratio = maximum_hop_step / std::max(typical_step, 1.0e-12);
+    std::printf("Halo tone diagnostic: hop_step_ratio=%g\n", ratio);
+    return Check(ratio < 4.0, "continuous tone has no STFT hop clicks");
 }
 
 } // namespace
@@ -89,6 +224,8 @@ int main() {
     if (!TestCentreEncodingAndFold()) return 1;
     if (!TestLeftDirection()) return 1;
     if (!TestPreparedSilence()) return 1;
+    if (!TestIdentityLatencyAndContinuity()) return 1;
+    if (!TestToneHasNoHopClicks()) return 1;
     std::puts("IEM Halo encoder tests passed");
     return 0;
 }

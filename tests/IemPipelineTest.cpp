@@ -157,7 +157,7 @@ bool TestRenderModesAndHaloBranch() {
     off_params.limiter.enabled = false;
     iem::IemPipeline off;
     if (!Check(off.Prepare(off_params, kBlock), "prepare Halo Off pipeline")) return false;
-    if (!Check(off.WetLatencyFrames() == 1024U, "Halo Off includes STFT latency")) return false;
+    if (!Check(off.WetLatencyFrames() == 1536U, "Halo Off includes encoder latency")) return false;
     std::vector<float> off_left(kTotal), off_right(kTotal);
     if (!Render(off, left, right, off_left, off_right)) return false;
 

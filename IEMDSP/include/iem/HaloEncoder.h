@@ -23,7 +23,9 @@ public:
         float *const bed[kHaloBedChannels],
         std::size_t frames
     ) noexcept;
-    uint32_t StftLatencyFrames() const noexcept { return HaloStft::kReportedLatency; }
+    uint32_t StftLatencyFrames() const noexcept {
+        return HaloStft::kReportedLatency + HaloStft::kHop;
+    }
     bool Prepared() const noexcept { return prepared_; }
     std::size_t PreparedBytes() const noexcept;
 

@@ -18,7 +18,7 @@ bool TestSnapshotAndWireMapping() {
     iem::IemTelemetryPublisher publisher;
     publisher.Configure(48000, 96000);
     publisher.RecordSpatialState(
-        3, 0, 3, 17, 9, 1, 1024,
+        3, 0, 3, 17, 9, 1, 1536,
         iem::IemPreparationResult::SUCCESS, 4, 2.5F);
     publisher.RecordQueueOverflow(true);
     publisher.RecordQueueOverflow(false);
@@ -41,7 +41,7 @@ bool TestSnapshotAndWireMapping() {
             && snapshot.active_grains == 17 && snapshot.grain_pool_exhaustions == 9,
             "record spatial state")) return false;
     if (!Check(snapshot.halo_prepared == 1
-            && snapshot.halo_stft_latency_frames == 1024
+            && snapshot.halo_stft_latency_frames == 1536
             && snapshot.dialog_net_result == iem::IemPreparationResult::SUCCESS,
             "record Halo preparation state")) return false;
     if (!Check(snapshot.fault_code == 4
@@ -65,7 +65,7 @@ bool TestSnapshotAndWireMapping() {
         && Check(wire.encoder_mode == 3 && wire.render_mode == 0
             && wire.ambisonics_order == 3,
             "map spatial state")
-        && Check(wire.halo_prepared == 1 && wire.halo_stft_latency_frames == 1024
+        && Check(wire.halo_prepared == 1 && wire.halo_stft_latency_frames == 1536
             && wire.dialog_net_result
                 == static_cast<uint32_t>(iem::IemPreparationResult::SUCCESS),
             "map Halo preparation state")

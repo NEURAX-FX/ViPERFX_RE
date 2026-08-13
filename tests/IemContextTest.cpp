@@ -207,8 +207,8 @@ bool TestHaloRenderTelemetry() {
         && Check(telemetry.encoder_mode == 3, "publish Halo encoder mode")
         && Check(telemetry.render_mode == 0, "publish Off render mode")
         && Check(telemetry.halo_prepared == 1, "publish Halo prepared flag")
-        && Check(telemetry.halo_stft_latency_frames == 1024,
-            "publish Halo STFT latency")
+        && Check(telemetry.halo_stft_latency_frames == 1536,
+            "publish Halo encoder latency")
         && Check(telemetry.dialog_net_result == iem::IemPreparationResult::SUCCESS,
             "publish dialog.net preparation success");
 }

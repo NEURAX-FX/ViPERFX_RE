@@ -106,7 +106,7 @@ The STFT/iFFT pair follows the reconstructed Halo front end:
 
 - 1024-point real FFT, hop 512, 50 percent overlap, 513 complex bins;
 - symmetric Hann window `w[n] = 0.5 - 0.5*cos(2*pi*n/1024)` for `0 <= n < 1024`, applied after the inverse FFT;
-- reported algorithmic latency 1024 samples at the internal 96 kHz rate;
+- reported end-to-end encoder latency 1536 samples at the internal 96 kHz rate: the 1024-sample STFT window plus one 512-sample feature/output hop;
 - six-frame L/R spectral history with the documented left-rotating permutation;
 - seven complex planes after extraction, locally ordered `[L, R, Ls, Rs, Lsr, Rsr, C]`;
 - per-bin 37-feature vector plus the documented FANN bias node;

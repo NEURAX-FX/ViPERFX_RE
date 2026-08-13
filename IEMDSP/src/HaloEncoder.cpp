@@ -147,7 +147,6 @@ void HaloEncoder::RenderFrame(
         synthesis_[channel].InverseAdd(bed_re_[channel], bed_im_[channel],
             frame[channel], HaloStft::kFftSize);
     }
-    diffusion_.Process(frame, HaloStft::kFftSize);
     for (uint32_t channel = 0; channel < kHaloBedChannels; ++channel) {
         float *ring = output_ring_.ChannelData(channel);
         for (uint32_t offset = 0; offset < HaloStft::kFftSize; ++offset) {
@@ -174,6 +173,7 @@ bool HaloEncoder::ProcessBed(
         }
     }
     read_frame_ += frames;
+    diffusion_.Process(bed, frames);
     return true;
 }
 

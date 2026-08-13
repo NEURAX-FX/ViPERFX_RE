@@ -888,7 +888,7 @@ uint32_t dialog_net_result;
 ```cpp
 // After a Halo+Off prepare/process, snapshot.encoder_mode == 3
 // snapshot.render_mode == 0
-// snapshot.halo_stft_latency_frames == 1024
+// snapshot.halo_stft_latency_frames == 1536
 // snapshot.dialog_net_result reports SUCCESS
 ```
 
