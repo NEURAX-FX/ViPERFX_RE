@@ -8,6 +8,7 @@ add_library(IEMDSP STATIC
     src/Grain.cpp
     src/GranularEncoder.cpp
     src/HaloDialogExtractor.cpp
+    src/HaloDiffusion.cpp
     src/HaloStft.cpp
     src/HaloSurroundAssigner.cpp
     src/HeadphoneEq.cpp

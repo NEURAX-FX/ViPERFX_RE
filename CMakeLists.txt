@@ -185,6 +185,10 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_halo_surround_assigner_test PRIVATE IEMDSP)
     add_test(NAME iem_halo_surround_assigner_test COMMAND iem_halo_surround_assigner_test)
 
+    add_executable(iem_halo_diffusion_test tests/IemHaloDiffusionTest.cpp)
+    target_link_libraries(iem_halo_diffusion_test PRIVATE IEMDSP)
+    add_test(NAME iem_halo_diffusion_test COMMAND iem_halo_diffusion_test)
+
     add_executable(iem_spherical_harmonics_test
         tests/IemSphericalHarmonicsTest.cpp
     )
