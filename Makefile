@@ -68,6 +68,7 @@ module: libs
 	@cp $(MODULE_DIR)/post-fs-data.sh $(MODULE_OUT)/
 	@cp $(MODULE_DIR)/uninstall.sh $(MODULE_OUT)/
 	@cp $(MODULE_DIR)/LICENSE $(MODULE_OUT)/
+	@cp $(MODULE_DIR)/IEM_ATTRIBUTION.md $(MODULE_OUT)/
 	@cp -r $(MODULE_DIR)/common/* $(MODULE_OUT)/common/
 	@sed -i.bak \
 		-e 's/^version=.*/version=$(VERSION_NAME)/' \

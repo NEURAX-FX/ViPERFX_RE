@@ -18,6 +18,7 @@ constexpr int32_t kParamGetDriverVersionCode = 6;
 constexpr int32_t kParamGetDriverVersionName = 7;
 constexpr int32_t kParamGetArchitecture = 8;
 constexpr int32_t kParamGetTelemetry = 9;
+constexpr int32_t kParamGetIemTelemetry = 10;
 
 ViperContext::ViperContext() :
     config_({}),
@@ -203,6 +204,12 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
     if (graph_slots_.Pending() == nullptr) {
         graph_slots_.Active()->Transition().StartDryToWet();
     }
+    if (!iem_context_.Prepare(
+            config_.input_cfg.sampling_rate,
+            viper::audio::kMaxBlockFrames
+        )) {
+        VIPER_LOGE("Failed to prepare independent IEM context; IEM remains bypassed");
+    }
     if (!analyzer_.Configure(config_.input_cfg.sampling_rate, 2)) {
         VIPER_LOGE("Failed to configure audio analyzer");
     }
@@ -216,6 +223,7 @@ void ViperContext::DispatchRawParam(
     uint32_t arr_size,
     signed char *arr
 ) {
+    if (iem_context_.DispatchRawParam(param, val1, val2, val3)) return;
     const viper::RawParamUpdate parameter_result = viper::UpdateParameterSnapshot(
         parameter_snapshot_, param, val1, val2, val3, arr_size, arr
     );
@@ -262,6 +270,7 @@ void ViperContext::ResetGraphs() noexcept {
         }
     }
     graph_slots_.ReleasePrevious();
+    iem_context_.Reset();
 }
 
 int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data) {
@@ -416,6 +425,23 @@ int32_t ViperContext::HandleGetParam(
             viper::AnalyzerSnapshot snapshot{};
             if (!analyzer_.ReadTelemetry(&snapshot)) return -ENODATA;
             const viper::TelemetryWire wire = viper::MakeTelemetryWire(snapshot);
+            reply_param->status = 0;
+            reply_param->vsize = sizeof(wire);
+            memcpy(reply_param->data + offset, &wire, sizeof(wire));
+            *reply_size = required_size;
+            return 0;
+        }
+        case kParamGetIemTelemetry: {
+            const uint32_t required_size =
+                sizeof(effect_param_t) + offset + sizeof(viper::IemTelemetryWire);
+            if (*reply_size < required_size) {
+                *reply_size = required_size;
+                return -ENOSPC;
+            }
+
+            iem::IemTelemetrySnapshot snapshot{};
+            if (!iem_context_.ReadTelemetry(snapshot)) return -ENODATA;
+            const viper::IemTelemetryWire wire = viper::MakeIemTelemetryWire(snapshot);
             reply_param->status = 0;
             reply_param->vsize = sizeof(wire);
             memcpy(reply_param->data + offset, &wire, sizeof(wire));
@@ -653,12 +679,14 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
                            .count();
         if (elapsed > 100) {
             active_graph->Reset();
+            iem_context_.Reset();
             analyzer_.Reset();
             active_graph->Transition().StartDryToWet();
             graph_slots_.ReleasePrevious();
         }
     } else {
         active_graph->Reset();
+        iem_context_.Reset();
         active_graph->Transition().StartDryToWet();
         graph_slots_.ReleasePrevious();
         has_processed_ = true;
@@ -722,6 +750,7 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
     } else {
         active_graph->Transition().Apply(buffer_.data(), dry_buffer_.data(), frame_count);
     }
+    iem_context_.Process(buffer_.data(), frame_count);
     analyzer_.Push(buffer_.data(), frame_count);
     const auto compressor_meters = active_graph->Engine().GetCompressorGainReductionDb();
     for (size_t i = 0; i < compressor_meters.size(); ++i) {

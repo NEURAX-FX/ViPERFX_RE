@@ -7,6 +7,8 @@
 namespace viper::audio {
 namespace {
 
+constexpr int kMaxConvolverSamples = 4 * 1024 * 1024;
+
 void ClearPendingConvolver(
     std::vector<float> &buffer,
     size_t &size,
@@ -41,7 +43,9 @@ ResourceCaptureResult DspResources::CaptureRaw(
                 convolver_kernel_id_ = 0;
                 return ResourceCaptureResult::CLEARED;
             }
-            if (val1 < 16 || (val2 != 1 && val2 != 2)) {
+            if ((val2 != 1 && val2 != 2 && val2 != 4)
+                || val1 > kMaxConvolverSamples
+                || val1 < 16 * val2 || val1 % val2 != 0) {
                 ClearPendingConvolver(
                     pending_convolver_,
                     pending_convolver_size_,
@@ -72,7 +76,9 @@ ResourceCaptureResult DspResources::CaptureRaw(
         case kParamConvolverCommitBuffer: {
             const bool complete = val1 > 0
                 && static_cast<size_t>(val1) == pending_convolver_.size()
-                && pending_convolver_size_ == pending_convolver_.size();
+                && pending_convolver_size_ == pending_convolver_.size()
+                && pending_convolver_channels_ != 0
+                && pending_convolver_.size() % pending_convolver_channels_ == 0;
             const uint32_t crc = complete
                 ? Crc32(
                     reinterpret_cast<const uint8_t *>(pending_convolver_.data()),
@@ -149,7 +155,8 @@ bool DspResources::ApplyTo(DspGraph &graph) const {
 
 bool DspResources::HasConvolverKernel() const noexcept {
     return !convolver_kernel_.empty()
-        && (convolver_channels_ == 1 || convolver_channels_ == 2)
+        && (convolver_channels_ == 1 || convolver_channels_ == 2
+            || convolver_channels_ == 4)
         && convolver_kernel_.size() % convolver_channels_ == 0;
 }
 

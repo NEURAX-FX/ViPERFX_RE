@@ -1,9 +1,21 @@
 #include "viper/ParameterSnapshot.h"
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
 
 namespace {
+
+static_assert(sizeof(viper::ConvolverParams) == 24);
+static_assert(offsetof(viper::ConvolverParams, cross_channel) == 4);
+static_assert(offsetof(viper::ConvolverParams, wet) == 8);
+static_assert(offsetof(viper::ConvolverParams, output_gain_db) == 12);
+static_assert(offsetof(viper::ConvolverParams, routing) == 16);
+static_assert(offsetof(viper::ConvolverParams, cross_delay_ms) == 20);
+static_assert(offsetof(viper::ViPERParams, convolver) == 316);
+static_assert(offsetof(viper::ViPERParams, ddc) == 340);
+static_assert(offsetof(viper::ViPERParams, dynamic_eq) == 872);
+static_assert(sizeof(viper::ViPERParams) == 1160);
 
 bool Check(bool condition, const char *message) {
     if (condition) return true;
@@ -126,6 +138,52 @@ bool TestCommandClassification() {
                 == viper::RawParamUpdate::UNKNOWN,
             "classify unknown command"
         );
+}
+
+bool TestConvolverMappingsAndClamping() {
+    using namespace viper::params;
+    viper::ViPERParams snapshot{};
+    const auto apply = [&](int param, int value) {
+        return viper::UpdateParameterSnapshot(
+            snapshot, param, value, 0, 0, 0, nullptr
+        ) == viper::RawParamUpdate::UPDATED;
+    };
+
+    if (!Check(apply(kParamConvolverCrossChannel, 35), "convolver cross update")) {
+        return false;
+    }
+    if (!Check(apply(kParamConvolverWet, 65), "convolver wet update")) return false;
+    if (!Check(apply(kParamConvolverOutputGain, -35), "convolver gain update")) {
+        return false;
+    }
+    if (!Check(apply(kParamConvolverRouting, 2), "convolver routing update")) {
+        return false;
+    }
+    if (!Check(apply(kParamConvolverCrossDelay, 3125), "convolver delay update")) {
+        return false;
+    }
+    if (!Check(Near(snapshot.convolver.cross_channel, 0.35F), "convolver cross scale")) {
+        return false;
+    }
+    if (!Check(Near(snapshot.convolver.wet, 0.65F), "convolver wet scale")) return false;
+    if (!Check(Near(snapshot.convolver.output_gain_db, -3.5F), "convolver gain scale")) {
+        return false;
+    }
+    if (!Check(snapshot.convolver.routing == 2, "convolver routing value")) return false;
+    if (!Check(Near(snapshot.convolver.cross_delay_ms, 0.3125F), "convolver delay scale")) {
+        return false;
+    }
+
+    apply(kParamConvolverCrossChannel, 101);
+    apply(kParamConvolverWet, -1);
+    apply(kParamConvolverOutputGain, 241);
+    apply(kParamConvolverRouting, 9);
+    apply(kParamConvolverCrossDelay, 100001);
+    return Check(Near(snapshot.convolver.cross_channel, 1.0F), "clamp convolver cross")
+        && Check(Near(snapshot.convolver.wet, 0.0F), "clamp convolver wet")
+        && Check(Near(snapshot.convolver.output_gain_db, 24.0F), "clamp convolver gain")
+        && Check(snapshot.convolver.routing == 2, "clamp convolver routing")
+        && Check(Near(snapshot.convolver.cross_delay_ms, 10.0F), "clamp convolver delay");
 }
 
 bool TestRemainingEffectMappings() {
@@ -253,6 +311,7 @@ int main() {
     if (!TestEqualizerMappings()) return 1;
     if (!TestIndexedDynamicsMappings()) return 1;
     if (!TestCommandClassification()) return 1;
+    if (!TestConvolverMappingsAndClamping()) return 1;
     if (!TestRemainingEffectMappings()) return 1;
     if (!TestRemainingIndexedMappings()) return 1;
     std::puts("Parameter snapshot tests passed");

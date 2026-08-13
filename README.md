@@ -39,6 +39,12 @@ If your see any process related to audio HAL with "aidl" in the name, you need t
 
 ## Installation
 
+## IEM Spatial Audio
+
+The legacy non-AIDL path includes the IEM spatial engine with Stereo, Multi, Granular, and Halo encoders. Render modes are Off, Simple, and KU100; KU100 remains the default.
+
+Halo is a project-local clean-room reconstruction from the HaloMixRE reverse-engineering notes. It is not an IEM Plug-in Suite component, and the original Halo binary and VST3 are not shipped. See [docs/iem-upstream-attribution.md](docs/iem-upstream-attribution.md) for parameter IDs, the pinned `dialog.net` hash, and IEM/KU100 attribution.
+
 1. Download the **module zip matching your device** (non-AIDL vs. AIDL — see [Which module should you install?](#which-module-should-you-install)) from the [Releases page](https://github.com/likelikeslike/ViPERFX_RE/releases), and the [ViPER4Android app](https://github.com/likelikeslike/ViPER4Android).
 2. Flash the Magisk module. **Do not flash both modules.**
 3. Install the app.
@@ -288,6 +294,12 @@ Prerequisites: Android NDK, CMake, Make. Set `ANDROID_NDK_HOME` (or `ANDROID_NDK
 make libs   # build libv4a_re.so for arm64-v8a and armeabi-v7a
 make zip    # build + package a flashable Magisk module zip
 ```
+
+## IEM Spatial Audio
+
+The legacy non-AIDL driver includes the Phase 1 IEM spatial engine with Stereo, Multi, and Granular encoders, manual scene rotation, Neumann KU100 decoding, 23 headphone-EQ responses, output limiting, and diagnostic telemetry. It is intentionally unavailable on the AIDL path in Phase 1.
+
+The implementation is based on the GPL-3.0-or-later IEM Plug-in Suite pinned at commit `39de1dd5883f1bd8d65fe1662487f2470a1d7b55`. Complete source/resource provenance, scientific citations, parameter IDs, build-time resampling details, and telemetry definitions are documented in [docs/iem-upstream-attribution.md](docs/iem-upstream-attribution.md). The packaged Magisk module also includes `IEM_ATTRIBUTION.md`.
 
 ## Credits
 

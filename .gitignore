@@ -148,3 +148,5 @@ build/
 .cxx/
 
 .DS_Store
+.superpowers/
+.lcm/

@@ -16,8 +16,11 @@ bool Check(bool condition, const char *message) {
 bool TestConvolverKernelReplaysIntoReplacementGraph() {
     using namespace viper::params;
     viper::audio::DspResources resources;
-    std::array<float, 16> kernel{};
+    std::array<float, 16 * 4> kernel{};
     kernel[0] = 1.0F;
+    kernel[1] = 2.0F;
+    kernel[2] = 3.0F;
+    kernel[3] = 4.0F;
     const uint32_t crc = Crc32(
         reinterpret_cast<const uint8_t *>(kernel.data()),
         kernel.size() * sizeof(float)
@@ -27,7 +30,7 @@ bool TestConvolverKernelReplaysIntoReplacementGraph() {
             resources.CaptureRaw(
                 kParamConvolverPrepareBuffer,
                 kernel.size(),
-                1,
+                4,
                 0,
                 0,
                 nullptr
@@ -69,6 +72,44 @@ bool TestConvolverKernelReplaysIntoReplacementGraph() {
     return Check(
         replacement.Engine().GetConvolverKernelID() == 77,
         "replacement graph receives kernel ID"
+    );
+}
+
+bool TestUnsupportedChannelCountPreservesCommittedState() {
+    using namespace viper::params;
+    viper::audio::DspResources resources;
+    const std::array<float, 16> kernel{1.0F};
+    const uint32_t crc = Crc32(
+        reinterpret_cast<const uint8_t *>(kernel.data()),
+        kernel.size() * sizeof(float)
+    );
+    resources.CaptureRaw(kParamConvolverPrepareBuffer, kernel.size(), 1, 0, 0, nullptr);
+    resources.CaptureRaw(
+        kParamConvolverSetBuffer,
+        0,
+        0,
+        0,
+        kernel.size(),
+        reinterpret_cast<const signed char *>(kernel.data())
+    );
+    resources.CaptureRaw(
+        kParamConvolverCommitBuffer, kernel.size(), crc, 23, 0, nullptr
+    );
+
+    if (!Check(
+            resources.CaptureRaw(kParamConvolverPrepareBuffer, 80, 5, 0, 0, nullptr)
+                == viper::audio::ResourceCaptureResult::INVALID,
+            "reject five-channel resource"
+        )) {
+        return false;
+    }
+
+    viper::audio::DspGraph replacement;
+    if (!replacement.Prepare({48000, 8192, 6})) return false;
+    if (!resources.ApplyTo(replacement)) return false;
+    return Check(
+        replacement.Engine().GetConvolverKernelID() == 23,
+        "unsupported channel count preserves committed kernel"
     );
 }
 
@@ -165,6 +206,7 @@ int main() {
     if (!TestConvolverKernelReplaysIntoReplacementGraph()) return 1;
     if (!TestDdcCoefficientsAffectReplacementGraph()) return 1;
     if (!TestInvalidResourceDoesNotReplaceCommittedState()) return 1;
+    if (!TestUnsupportedChannelCountPreservesCommittedState()) return 1;
     std::puts("DSP resource tests passed");
     return 0;
 }

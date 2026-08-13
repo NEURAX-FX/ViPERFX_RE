@@ -2,6 +2,7 @@
 
 #include "DspGraphSlots.h"
 #include "DspResources.h"
+#include "IemContext.h"
 #include "ParameterMailbox.h"
 #include "essential.h"
 #include "viper/ParameterSnapshot.h"
@@ -48,6 +49,7 @@ private:
     viper::audio::DspGraphSlots graph_slots_;
     viper::audio::DspResources resources_;
     viper::audio::ParameterMailbox parameter_mailbox_;
+    viper::audio::IemContext iem_context_;
     viper::ViPERParams parameter_snapshot_{};
     uint64_t applied_parameter_generation_ = 0;
     viper::AudioAnalyzer analyzer_;
