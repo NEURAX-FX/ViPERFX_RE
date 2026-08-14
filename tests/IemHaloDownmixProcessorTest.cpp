@@ -237,10 +237,21 @@ bool TestDynamicRamps() {
     params.ls_delay_us = 10000;
     processor.ApplyParams(params);
     std::vector<float> transition_left(kTransition), transition_right(kTransition);
-    float *transition_outputs[2]{transition_left.data(), transition_right.data()};
+    float *first_transition_outputs[2]{transition_left.data(), transition_right.data()};
     if (!Check(processor.Process(
-            transition_inputs.data(), transition_outputs, kTransition),
-            "process delay crossfade")) return false;
+            transition_inputs.data(), first_transition_outputs, kTransition / 2),
+            "process first half of delay crossfade")) return false;
+    processor.ApplyParams(params);
+    std::array<const float *, iem::HaloDownmixProcessor::kRoleCount> second_inputs{};
+    for (uint32_t role = 0; role < iem::HaloDownmixProcessor::kRoleCount; ++role) {
+        second_inputs[role] = transition_inputs[role] + kTransition / 2;
+    }
+    float *second_transition_outputs[2]{
+        transition_left.data() + kTransition / 2,
+        transition_right.data() + kTransition / 2,
+    };
+    if (!Check(processor.Process(second_inputs.data(), second_transition_outputs,
+            kTransition / 2), "process second half of delay crossfade")) return false;
     if (!Check(Near(transition_left[0], 0.1024F, 2.0e-5F),
             "delay crossfade starts on old tap")) return false;
     if (!Check(Near(transition_left[9999], 1.19829F, 3.0e-4F),
@@ -271,9 +282,17 @@ bool TestDynamicRamps() {
     std::fill(gain_input[static_cast<uint32_t>(iem::HaloDownmixRole::L)].begin(),
         gain_input[static_cast<uint32_t>(iem::HaloDownmixRole::L)].end(), 1.0F);
     std::vector<float> gain_left(1024), gain_right(1024);
-    float *gain_outputs[2]{gain_left.data(), gain_right.data()};
-    if (!Check(processor.Process(gain_inputs.data(), gain_outputs, 1024),
-            "process output gain ramp")) return false;
+    float *first_gain_outputs[2]{gain_left.data(), gain_right.data()};
+    if (!Check(processor.Process(gain_inputs.data(), first_gain_outputs, 512),
+            "process first half of output gain ramp")) return false;
+    processor.ApplyParams(params);
+    std::array<const float *, iem::HaloDownmixProcessor::kRoleCount> second_gain_inputs{};
+    for (uint32_t role = 0; role < iem::HaloDownmixProcessor::kRoleCount; ++role) {
+        second_gain_inputs[role] = gain_inputs[role] + 512;
+    }
+    float *second_gain_outputs[2]{gain_left.data() + 512, gain_right.data() + 512};
+    if (!Check(processor.Process(second_gain_inputs.data(), second_gain_outputs, 512),
+            "process second half of output gain ramp")) return false;
     return Check(gain_left[0] > 1.0F && gain_left[0] < 1.02F,
             "gain ramp starts smoothly")
         && Check(Near(gain_left[1023], 10.0F, 2.0e-4F),

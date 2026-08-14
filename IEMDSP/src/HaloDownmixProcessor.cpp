@@ -49,13 +49,15 @@ void HaloDownmixProcessor::Ramp::Set(
     uint32_t frames,
     bool immediate
 ) noexcept {
-    target = value;
     if (immediate || frames == 0U) {
+        target = value;
         current = target;
         step = 0.0F;
         remaining = 0U;
         return;
     }
+    if (value == target) return;
+    target = value;
     if (target == current) return;
     remaining = frames;
     step = (target - current) / static_cast<float>(frames);
@@ -77,9 +79,16 @@ void HaloDownmixProcessor::Ramp::Snap() noexcept {
 }
 
 void HaloDownmixProcessor::DelayState::Set(uint32_t frames, bool immediate) noexcept {
-    target = frames;
-    if (immediate || target == current) {
+    if (immediate) {
+        target = frames;
         current = target;
+        mix = 1.0F;
+        active = false;
+        return;
+    }
+    if (frames == target) return;
+    target = frames;
+    if (target == current) {
         mix = 1.0F;
         active = false;
         return;
