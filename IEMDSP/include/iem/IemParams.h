@@ -210,6 +210,7 @@ struct HaloLfeParams {
     int32_t split_millionths = 0;
     int32_t gain_millionths = 272727;
     HaloLfeCoefficients coefficients_96k{};
+    float gain_linear = 0.0316227766F;
 };
 
 struct HaloParams {

@@ -1,4 +1,5 @@
 #include "iem/IemParams.h"
+#include "iem/HaloLfeSynth.h"
 
 #include <algorithm>
 
@@ -229,12 +230,16 @@ ParamUpdate UpdateIemParameterSnapshot(
         return SetBool(params.halo.lfe.enabled, val1);
     case kParamHaloLfeFrequency:
         SetClamped(params.halo.lfe.frequency_millionths, val1, 0, 1000000);
+        params.halo.lfe.coefficients_96k = MakeHaloLfeLowPass(
+            96000, params.halo.lfe.frequency_millionths);
         return ParamUpdate::UPDATED;
     case kParamHaloLfeSplit:
         SetClamped(params.halo.lfe.split_millionths, val1, 0, 1000000);
         return ParamUpdate::UPDATED;
     case kParamHaloLfeGain:
         SetClamped(params.halo.lfe.gain_millionths, val1, 0, 1000000);
+        params.halo.lfe.gain_linear = HaloLfeGainLinear(
+            params.halo.lfe.gain_millionths);
         return ParamUpdate::UPDATED;
     case kParamIemResourceReset:
     case kCommandResetRotation:
