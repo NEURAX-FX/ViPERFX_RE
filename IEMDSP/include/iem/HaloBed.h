@@ -19,8 +19,14 @@ enum class HaloBedChannel : uint32_t {
 };
 
 constexpr uint32_t kHaloBedChannels = static_cast<uint32_t>(HaloBedChannel::kCount);
+constexpr uint32_t kHaloDirectionalChannels = kHaloBedChannels;
 constexpr float kHaloBedAzimuthDegrees[kHaloBedChannels] = {
     -30.0F, 30.0F, 0.0F, -90.0F, 90.0F, -135.0F, 135.0F,
+};
+
+struct HaloBedView {
+    float *directional[kHaloDirectionalChannels]{};
+    float *lfe = nullptr;
 };
 
 void EncodeHaloBedToSn3d(

@@ -27,6 +27,14 @@ bool ValidMutableBed(float *const bed[kHaloBedChannels]) noexcept {
     return true;
 }
 
+bool ValidBedView(const HaloBedView &bed) noexcept {
+    if (bed.lfe == nullptr) return false;
+    for (uint32_t channel = 0; channel < kHaloDirectionalChannels; ++channel) {
+        if (bed.directional[channel] == nullptr) return false;
+    }
+    return true;
+}
+
 } // namespace
 
 void EncodeHaloBedToSn3d(
@@ -87,7 +95,9 @@ bool HaloEncoder::Prepare(const EncoderConfig &config) noexcept {
         || !dialog_.Prepare()
         || !surround_.Prepare()
         || !diffusion_.Prepare(config.sample_rate)
+        || !lfe_.Prepare(config.sample_rate)
         || !frame_time_.Prepare(kHaloBedChannels, HaloStft::kFftSize)
+        || !lfe_buffer_.Prepare(1, config.max_frames)
         || !output_ring_.Prepare(kHaloBedChannels, ring_frames_)) {
         prepared_ = false;
         return false;
@@ -108,6 +118,7 @@ void HaloEncoder::ApplyParams(const IemParams &params) noexcept {
     dialog_.ApplyParams(params.halo);
     surround_.ApplyParams(params.halo);
     diffusion_.ApplyParams(params.halo);
+    lfe_.ApplyParams(params.halo.lfe);
 }
 
 void HaloEncoder::Reset() noexcept {
@@ -116,7 +127,9 @@ void HaloEncoder::Reset() noexcept {
     dialog_.Reset();
     surround_.Reset();
     diffusion_.Reset();
+    lfe_.Reset();
     frame_time_.Clear();
+    lfe_buffer_.Clear();
     output_ring_.Clear();
     read_frame_ = 0;
     synthesis_frame_ = HaloStft::kReportedLatency;
@@ -161,25 +174,46 @@ bool HaloEncoder::ProcessBed(
     float *const bed[kHaloBedChannels],
     std::size_t frames
 ) noexcept {
+    if (!ValidMutableBed(bed)) return false;
+    HaloBedView view{};
+    for (uint32_t channel = 0; channel < kHaloDirectionalChannels; ++channel) {
+        view.directional[channel] = bed[channel];
+    }
+    view.lfe = lfe_buffer_.ChannelData(0);
+    return ProcessBed(stereo, view, frames);
+}
+
+bool HaloEncoder::ProcessBed(
+    const float *const stereo[2],
+    HaloBedView bed,
+    std::size_t frames
+) noexcept {
     if (!prepared_ || frames > config_.max_frames || stereo == nullptr
-        || stereo[0] == nullptr || stereo[1] == nullptr || !ValidMutableBed(bed)) return false;
+        || stereo[0] == nullptr || stereo[1] == nullptr || !ValidBedView(bed)) return false;
     if (!analysis_.Process(stereo[0], stereo[1], frames, OnAnalysisFrame, this)) return false;
     for (uint32_t channel = 0; channel < kHaloBedChannels; ++channel) {
         float *ring = output_ring_.ChannelData(channel);
         for (std::size_t frame = 0; frame < frames; ++frame) {
             const std::size_t index = (read_frame_ + frame) % ring_frames_;
-            bed[channel][frame] = ring[index];
+            bed.directional[channel][frame] = ring[index];
             ring[index] = 0.0F;
         }
     }
     read_frame_ += frames;
-    diffusion_.Process(bed, frames);
+    diffusion_.Process(bed.directional, frames);
+    lfe_.Process(
+        bed.directional[static_cast<uint32_t>(HaloBedChannel::L)],
+        bed.directional[static_cast<uint32_t>(HaloBedChannel::R)],
+        bed.directional[static_cast<uint32_t>(HaloBedChannel::C)],
+        bed.lfe,
+        frames);
     return true;
 }
 
 std::size_t HaloEncoder::PreparedBytes() const noexcept {
     return kHaloBedChannels * (ring_frames_ + HaloStft::kFftSize) * sizeof(float)
-        + 2U * kHaloBedChannels * HaloStft::kBins * sizeof(float);
+        + 2U * kHaloBedChannels * HaloStft::kBins * sizeof(float)
+        + config_.max_frames * sizeof(float);
 }
 
 } // namespace iem

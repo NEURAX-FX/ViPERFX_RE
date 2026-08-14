@@ -4,6 +4,7 @@
 #include "iem/HaloBed.h"
 #include "iem/HaloDialogExtractor.h"
 #include "iem/HaloDiffusion.h"
+#include "iem/HaloLfeSynth.h"
 #include "iem/HaloStft.h"
 #include "iem/HaloSurroundAssigner.h"
 #include "iem/IemEncoder.h"
@@ -21,6 +22,11 @@ public:
     bool ProcessBed(
         const float *const stereo[2],
         float *const bed[kHaloBedChannels],
+        std::size_t frames
+    ) noexcept;
+    bool ProcessBed(
+        const float *const stereo[2],
+        HaloBedView bed,
         std::size_t frames
     ) noexcept;
     uint32_t StftLatencyFrames() const noexcept {
@@ -51,7 +57,9 @@ private:
     HaloDialogExtractor dialog_{};
     HaloSurroundAssigner surround_{};
     HaloDiffusion diffusion_{};
+    HaloLfeSynth lfe_{};
     AlignedPlanarBuffer frame_time_{};
+    AlignedPlanarBuffer lfe_buffer_{};
     AlignedPlanarBuffer output_ring_{};
     float bed_re_[kHaloBedChannels][HaloStft::kBins]{};
     float bed_im_[kHaloBedChannels][HaloStft::kBins]{};

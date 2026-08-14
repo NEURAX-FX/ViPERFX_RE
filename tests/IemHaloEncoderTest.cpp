@@ -218,6 +218,84 @@ bool TestToneHasNoHopClicks() {
     return Check(ratio < 4.0, "continuous tone has no STFT hop clicks");
 }
 
+bool TestExplicitLfeSideband() {
+    constexpr std::size_t kBlock = 256;
+    constexpr std::size_t kFrames = 8192;
+    constexpr std::size_t kImpulseFrame = 733;
+
+    iem::EncoderConfig config{};
+    config.max_frames = kBlock;
+    iem::HaloEncoder enabled;
+    iem::HaloEncoder disabled;
+    if (!Check(enabled.Prepare(config) && disabled.Prepare(config),
+            "prepare LFE comparison encoders")) return false;
+
+    iem::IemParams enabled_params{};
+    enabled_params.halo.dialog_isolate_thousandths = 0;
+    enabled_params.halo.divergence_thousandths = 1000;
+    enabled_params.halo.fade_thousandths = 0;
+    enabled_params.halo.fade_rears_thousandths = 0;
+    enabled_params.halo.diffusion_thousandths = 0;
+    enabled_params.halo.space_thousandths = 0;
+    enabled_params.halo.rear_shelf_enable = false;
+    enabled_params.halo.lfe.enabled = true;
+    enabled_params.halo.lfe.split_millionths = 0;
+    iem::IemParams disabled_params = enabled_params;
+    disabled_params.halo.lfe.enabled = false;
+    enabled.ApplyParams(enabled_params);
+    disabled.ApplyParams(disabled_params);
+
+    float input_storage[2][kBlock]{};
+    const float *input[2]{input_storage[0], input_storage[1]};
+    float enabled_storage[iem::kHaloBedChannels][kBlock]{};
+    float disabled_storage[iem::kHaloBedChannels][kBlock]{};
+    float enabled_lfe[kBlock]{};
+    float disabled_lfe[kBlock]{};
+    iem::HaloBedView enabled_view{};
+    iem::HaloBedView disabled_view{};
+    for (uint32_t channel = 0; channel < iem::kHaloDirectionalChannels; ++channel) {
+        enabled_view.directional[channel] = enabled_storage[channel];
+        disabled_view.directional[channel] = disabled_storage[channel];
+    }
+    enabled_view.lfe = enabled_lfe;
+    disabled_view.lfe = disabled_lfe;
+
+    float lfe_peak = 0.0F;
+    std::size_t lfe_peak_frame = 0;
+    for (std::size_t offset = 0; offset < kFrames; offset += kBlock) {
+        for (std::size_t frame = 0; frame < kBlock; ++frame) {
+            const float sample = offset + frame == kImpulseFrame ? 0.1F : 0.0F;
+            input_storage[0][frame] = sample;
+            input_storage[1][frame] = sample;
+        }
+        if (!Check(enabled.ProcessBed(input, enabled_view, kBlock)
+                && disabled.ProcessBed(input, disabled_view, kBlock),
+                "process LFE comparison block")) return false;
+        for (uint32_t channel = 0; channel < iem::kHaloDirectionalChannels; ++channel) {
+            for (std::size_t frame = 0; frame < kBlock; ++frame) {
+                if (enabled_storage[channel][frame] != disabled_storage[channel][frame]) {
+                    return Check(false, "split zero leaves directional bed unchanged");
+                }
+            }
+        }
+        for (std::size_t frame = 0; frame < kBlock; ++frame) {
+            if (disabled_lfe[frame] != 0.0F) {
+                return Check(false, "disabled encoder LFE remains zero");
+            }
+            if (std::fabs(enabled_lfe[frame]) > lfe_peak) {
+                lfe_peak = std::fabs(enabled_lfe[frame]);
+                lfe_peak_frame = offset + frame;
+            }
+        }
+    }
+    return Check(lfe_peak > 1.0e-8F, "enabled encoder produces an LFE sideband")
+        && Check(lfe_peak_frame >= kImpulseFrame + iem::HaloStft::kReportedLatency,
+            "LFE peak starts inside the Halo encoder latency window")
+        && Check(lfe_peak_frame <= kImpulseFrame + enabled.StftLatencyFrames()
+                + iem::HaloStft::kHop,
+            "LFE peak does not drift beyond the Halo encoder latency window");
+}
+
 } // namespace
 
 int main() {
@@ -226,6 +304,7 @@ int main() {
     if (!TestPreparedSilence()) return 1;
     if (!TestIdentityLatencyAndContinuity()) return 1;
     if (!TestToneHasNoHopClicks()) return 1;
+    if (!TestExplicitLfeSideband()) return 1;
     std::puts("IEM Halo encoder tests passed");
     return 0;
 }
