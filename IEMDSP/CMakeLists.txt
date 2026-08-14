@@ -9,6 +9,7 @@ add_library(IEMDSP STATIC
     src/GranularEncoder.cpp
     src/HaloDialogExtractor.cpp
     src/HaloDiffusion.cpp
+    src/HaloDownmixDecoder.cpp
     src/HaloDownmixParams.cpp
     src/HaloDownmixProcessor.cpp
     src/HaloEncoder.cpp
