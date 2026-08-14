@@ -41,9 +41,11 @@ If your see any process related to audio HAL with "aidl" in the name, you need t
 
 ## IEM Spatial Audio
 
-The legacy non-AIDL path includes the IEM spatial engine with Stereo, Multi, Granular, and Halo encoders. Render modes are Off, Simple, and KU100; KU100 remains the default.
+The legacy non-AIDL path includes the IEM spatial engine with Stereo, Multi, Granular, and Halo 7.1 encoders. Render modes are Off, Halo Downmix, and KU100; KU100 remains the default.
 
-Halo is a project-local clean-room reconstruction from the HaloMixRE reverse-engineering notes. It is not an IEM Plug-in Suite component, and the original Halo binary and VST3 are not shipped. See [docs/iem-upstream-attribution.md](docs/iem-upstream-attribution.md) for parameter IDs, the pinned `dialog.net` hash, and IEM/KU100 attribution.
+Halo is a project-local clean-room reconstruction from the HaloMixRE reverse-engineering notes. Its internal bed contains seven directional planes plus a non-directional LFE sideband; LFE never enters ACN/SN3D rotation and is latency-aligned before stereo mixing. It is not an IEM Plug-in Suite component, and the original Halo binary and VST3 are not shipped. See [docs/iem-upstream-attribution.md](docs/iem-upstream-attribution.md) for parameter IDs, the pinned `dialog.net` hash, and IEM/KU100 attribution.
+
+Halo Downmix replaces the former direct Simple decoder. It reconstructs a logical 7.1 bed, applies the clean-room Halo balance/divergence, delay, shelf, M/S trim, LFE low-pass, and output high-pass stages, then uses the confirmed sparse stereo route. The decoder has a fixed 3,072-sample base latency at the internal 96 kHz rate. The unresolved FFT Monofilter and arbitrary host-layout negotiation are intentionally not included.
 
 1. Download the **module zip matching your device** (non-AIDL vs. AIDL — see [Which module should you install?](#which-module-should-you-install)) from the [Releases page](https://github.com/likelikeslike/ViPERFX_RE/releases), and the [ViPER4Android app](https://github.com/likelikeslike/ViPER4Android).
 2. Flash the Magisk module. **Do not flash both modules.**
