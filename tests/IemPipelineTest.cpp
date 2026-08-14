@@ -61,6 +61,19 @@ bool TestProfileBoundsAndModes() {
             }
         }
     }
+    for (uint32_t profile = 0; profile < 3; ++profile) {
+        iem::IemParams params{};
+        params.encoder_mode = iem::EncoderMode::HALO;
+        params.render_mode = iem::RenderMode::SIMPLE;
+        params.latency_profile = static_cast<iem::LatencyProfile>(profile);
+        params.limiter.enabled = false;
+        iem::IemPipeline pipeline;
+        if (!Check(pipeline.Prepare(params, kBlock),
+                "prepare Halo Downmix in every latency profile")) return false;
+        if (!Check(pipeline.LatencyFrames()
+                <= iem::kLatencyProfiles[profile].maximum_latency_ms * 96U,
+                "Halo Downmix profile latency cap")) return false;
+    }
     return Check(iem::kLatencyProfiles[0].partition_frames
             < iem::kLatencyProfiles[1].partition_frames
             && iem::kLatencyProfiles[1].partition_frames
@@ -176,6 +189,8 @@ bool TestRenderModesAndHaloBranch() {
     simple_params.render_mode = iem::RenderMode::SIMPLE;
     iem::IemPipeline simple_zero;
     if (!Check(simple_zero.Prepare(simple_params, kBlock), "prepare Halo Simple pipeline")) return false;
+    if (!Check(simple_zero.WetLatencyFrames() == 1536U + 3072U,
+            "Halo Downmix adds fixed decoder latency")) return false;
     std::vector<float> simple_zero_left(kTotal), simple_zero_right(kTotal);
     if (!Render(simple_zero, left, right, simple_zero_left, simple_zero_right)) return false;
 
@@ -195,8 +210,8 @@ bool TestRenderModesAndHaloBranch() {
     iem::IemPipeline non_halo_off;
     return Check(non_halo_off.Prepare(stereo_off, kBlock),
         "Stereo Off skips KU100 and headphone-EQ resource preparation")
-        && Check(non_halo_off.WetLatencyFrames() == 0U,
-            "Stereo Off has no decoder latency");
+        && Check(non_halo_off.WetLatencyFrames() == 3072U,
+            "Stereo Off uses Halo Downmix decoder latency");
 }
 
 struct LfeDeltaRender {
@@ -274,6 +289,19 @@ bool SameSignal(const std::vector<float> &left, const std::vector<float> &right,
     return true;
 }
 
+bool SameSignalShifted(
+    const std::vector<float> &earlier,
+    const std::vector<float> &later,
+    std::size_t shift,
+    float tolerance = 1.0e-5F
+) {
+    if (earlier.size() != later.size() || shift >= earlier.size()) return false;
+    for (std::size_t frame = 0; frame + shift < earlier.size(); ++frame) {
+        if (std::fabs(earlier[frame] - later[frame + shift]) > tolerance) return false;
+    }
+    return true;
+}
+
 bool TestHaloLfeRenderRouting() {
     iem::IemParams off_params{};
     off_params.render_mode = iem::RenderMode::OFF;
@@ -291,8 +319,10 @@ bool TestHaloLfeRenderRouting() {
     LfeDeltaRender simple;
     if (!Check(RenderHaloLfeDelta(simple_params, simple),
             "render Halo Simple LFE delta")) return false;
-    if (!Check(SameSignal(off.left, simple.left),
-            "Off and Simple preserve the same LFE timeline")) return false;
+    if (!Check(simple.latency - off.latency == 3072U,
+            "Halo Downmix adds 3072 samples to LFE")) return false;
+    if (!Check(SameSignalShifted(off.left, simple.left, 3072U),
+            "Halo Downmix delays LFE exactly once")) return false;
 
     simple_params.rotation.yaw_centidegrees = 9000;
     LfeDeltaRender rotated;

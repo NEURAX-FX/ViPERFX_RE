@@ -30,7 +30,11 @@ bool IemPipeline::Prepare(const IemParams &params, std::size_t max_frames) noexc
     if (!PrepareEncoder(params, max_frames)) return false;
     const EncoderConfig encoder_config{96000, max_frames, params.order, 0x6D2B79F5U};
     if (params.render_mode != RenderMode::OFF && !rotator_.Prepare(encoder_config)) return false;
-    if (params.render_mode != RenderMode::KU100 && !simple_decoder_.Prepare(params.order)) {
+    const bool uses_halo_downmix = params.render_mode == RenderMode::SIMPLE
+        || (params.render_mode == RenderMode::OFF
+            && params.encoder_mode != EncoderMode::HALO);
+    if (uses_halo_downmix && !halo_downmix_decoder_.Prepare(
+            params.order, 96000U, max_frames)) {
         return false;
     }
     if (params.render_mode == RenderMode::KU100) {
@@ -56,6 +60,9 @@ bool IemPipeline::Prepare(const IemParams &params, std::size_t max_frames) noexc
         return false;
     }
     wet_latency_frames_ = Halo() != nullptr ? Halo()->StftLatencyFrames() : 0U;
+    if (uses_halo_downmix) {
+        wet_latency_frames_ += halo_downmix_decoder_.LatencyFrames();
+    }
     if (params.render_mode == RenderMode::KU100) {
         wet_latency_frames_ += decoder_.LatencyFrames() + headphone_eq_.LatencyFrames();
     }
@@ -85,10 +92,14 @@ void IemPipeline::ApplyParams(const IemParams &params) noexcept {
     params_.multi = params.multi;
     params_.granular = params.granular;
     params_.halo = params.halo;
+    params_.decoder.downmix = params.decoder.downmix;
     params_.rotation = params.rotation;
     if (IemEncoder *encoder = Encoder()) encoder->ApplyParams(params_);
     if (HaloEncoder *halo = Halo()) halo->ApplyParams(params_);
     if (params_.render_mode != RenderMode::OFF) rotator_.ApplyParams(params_);
+    const bool uses_halo_downmix = params_.render_mode == RenderMode::SIMPLE
+        || (params_.render_mode == RenderMode::OFF && Halo() == nullptr);
+    if (uses_halo_downmix) halo_downmix_decoder_.ApplyParams(params_.decoder.downmix);
     limiter_.SetEnabled(params_.limiter.enabled);
     limiter_.SetCeilingCentidb(params_.limiter.ceiling_centidb);
     wet_smoother_.SetTarget(std::clamp(params_.wet, 0.0F, 1.0F), max_frames_);
@@ -139,9 +150,11 @@ bool IemPipeline::Process(const float *const stereo[2], float *const output[2],
         if (!rotator_.Process(encoded_inputs.data(), rotated_pointers.data(), frames)) return false;
     }
     if (params_.render_mode == RenderMode::SIMPLE) {
-        if (!simple_decoder_.Process(rotated_inputs.data(), rendered_outputs, frames)) return false;
+        if (!halo_downmix_decoder_.Process(
+                rotated_inputs.data(), halo_lfe, rendered_outputs, frames)) return false;
     } else if (params_.render_mode == RenderMode::OFF && Halo() == nullptr) {
-        if (!simple_decoder_.Process(encoded_inputs.data(), rendered_outputs, frames)) return false;
+        if (!halo_downmix_decoder_.Process(
+                encoded_inputs.data(), nullptr, rendered_outputs, frames)) return false;
     } else if (params_.render_mode == RenderMode::KU100) {
         if (!decoder_.Process(rotated_inputs.data(), rendered_outputs, frames)) {
             error_ = decoder_.Error();
@@ -149,7 +162,7 @@ bool IemPipeline::Process(const float *const stereo[2], float *const output[2],
         }
     }
 
-    if (halo_lfe != nullptr) {
+    if (halo_lfe != nullptr && params_.render_mode != RenderMode::SIMPLE) {
         MixDelayedLfe(rendered_outputs[0], rendered_outputs[1], halo_lfe, frames);
     }
 
@@ -218,6 +231,9 @@ void IemPipeline::Reset() noexcept {
         decoder_.Reset();
         headphone_eq_.Reset();
     }
+    const bool uses_halo_downmix = params_.render_mode == RenderMode::SIMPLE
+        || (params_.render_mode == RenderMode::OFF && Halo() == nullptr);
+    if (uses_halo_downmix) halo_downmix_decoder_.Reset();
     limiter_.Reset();
     ClearRuntimeBuffers();
     wet_smoother_.Reset(std::clamp(params_.wet, 0.0F, 1.0F));

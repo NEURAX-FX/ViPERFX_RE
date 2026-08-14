@@ -80,6 +80,49 @@ bool TestMaximumConfigurationRealtimePath() {
         && Check(p99 != 0, "record maximum-config p99 timing");
 }
 
+bool TestHaloDownmixRealtimePath() {
+    iem::IemParams params{};
+    params.encoder_mode = iem::EncoderMode::HALO;
+    params.render_mode = iem::RenderMode::SIMPLE;
+    params.order = 3;
+    params.latency_profile = iem::LatencyProfile::STABLE;
+    params.decoder.downmix.side_shelf_enable = true;
+    params.decoder.downmix.rear_shelf_enable = true;
+    params.decoder.downmix.lfe_lpf_enable = true;
+    params.decoder.downmix.output_hpf_enable = true;
+    params.decoder.downmix.center_divergence_millionths = 500000;
+    params.limiter.enabled = true;
+    iem::RefreshHaloDownmixDerived(params.decoder.downmix);
+    iem::IemPipeline pipeline;
+    if (!Check(pipeline.Prepare(params, kMaxFrames),
+            "prepare maximum Halo Downmix pipeline")) return false;
+
+    std::array<float, kMaxFrames> left{};
+    std::array<float, kMaxFrames> right{};
+    std::array<float, kMaxFrames> output_left{};
+    std::array<float, kMaxFrames> output_right{};
+    const uint64_t before = g_new_calls.load(std::memory_order_relaxed);
+    g_count_new.store(true, std::memory_order_release);
+    for (std::size_t iteration = 0; iteration < 256; ++iteration) {
+        for (std::size_t frame = 0; frame < kMaxFrames; ++frame) {
+            left[frame] = std::sin(static_cast<float>(iteration * kMaxFrames + frame)
+                * 0.011F);
+            right[frame] = std::cos(static_cast<float>(iteration * kMaxFrames + frame)
+                * 0.019F);
+        }
+        const float *inputs[2]{left.data(), right.data()};
+        float *outputs[2]{output_left.data(), output_right.data()};
+        if (!pipeline.Process(inputs, outputs, kMaxFrames)) {
+            g_count_new.store(false, std::memory_order_release);
+            return false;
+        }
+    }
+    g_count_new.store(false, std::memory_order_release);
+    const uint64_t after = g_new_calls.load(std::memory_order_relaxed);
+    return Check(before == after,
+        "Halo Downmix callback performs no operator new allocation");
+}
+
 } // namespace
 
 void *operator new(std::size_t size) {
@@ -94,6 +137,7 @@ void operator delete(void *memory, std::size_t) noexcept { std::free(memory); }
 
 int main() {
     if (!TestMaximumConfigurationRealtimePath()) return 1;
+    if (!TestHaloDownmixRealtimePath()) return 1;
     std::puts("IEM realtime audit tests passed");
     return 0;
 }

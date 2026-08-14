@@ -8,7 +8,7 @@
 #include "iem/LinearSmoother.h"
 #include "iem/MultiEncoder.h"
 #include "iem/SceneRotator.h"
-#include "iem/SimpleDecoder.h"
+#include "iem/HaloDownmixDecoder.h"
 #include "iem/StereoEncoder.h"
 
 #include <cstddef>
@@ -25,9 +25,9 @@ struct LatencyProfileConfig {
 };
 
 constexpr LatencyProfileConfig kLatencyProfiles[3]{
-    {64, 1, 10},
-    {128, 2, 20},
-    {256, 4, 40},
+    {64, 1, 50},
+    {128, 2, 64},
+    {256, 4, 96},
 };
 
 class IemPipeline {
@@ -79,7 +79,7 @@ private:
     IemParams params_{};
     EncoderVariant encoder_{};
     SceneRotator rotator_{};
-    SimpleDecoder simple_decoder_{};
+    HaloDownmixDecoder halo_downmix_decoder_{};
     Ku100Decoder decoder_{};
     HeadphoneEq headphone_eq_{};
     LinkedLookaheadLimiter limiter_{};
