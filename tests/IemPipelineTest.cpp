@@ -199,6 +199,131 @@ bool TestRenderModesAndHaloBranch() {
             "Stereo Off has no decoder latency");
 }
 
+struct LfeDeltaRender {
+    std::vector<float> left;
+    std::vector<float> right;
+    uint32_t latency = 0;
+};
+
+bool RenderHaloLfeDelta(iem::IemParams params, LfeDeltaRender &result) {
+    constexpr std::size_t kTotal = 16384;
+    params.encoder_mode = iem::EncoderMode::HALO;
+    params.latency_profile = iem::LatencyProfile::STABLE;
+    params.wet = 1.0F;
+    params.limiter.enabled = false;
+    params.halo.dialog_isolate_thousandths = 0;
+    params.halo.divergence_thousandths = 1000;
+    params.halo.fade_thousandths = 0;
+    params.halo.fade_rears_thousandths = 0;
+    params.halo.diffusion_thousandths = 0;
+    params.halo.space_thousandths = 0;
+    params.halo.rear_shelf_enable = false;
+    params.halo.lfe.enabled = true;
+    params.halo.lfe.split_millionths = 0;
+    if (iem::UpdateIemParameterSnapshot(
+            params, iem::kParamHaloLfeGain, 1000000, 0, 0)
+            != iem::ParamUpdate::UPDATED) return false;
+
+    iem::IemParams disabled_params = params;
+    disabled_params.halo.lfe.enabled = false;
+    iem::IemPipeline enabled;
+    iem::IemPipeline disabled;
+    if (!enabled.Prepare(params, kBlock) || !disabled.Prepare(disabled_params, kBlock)) {
+        return false;
+    }
+
+    std::vector<float> input_left(kTotal, 0.0F);
+    std::vector<float> input_right(kTotal, 0.0F);
+    input_left[733] = 0.5F;
+    input_right[733] = 0.5F;
+    std::vector<float> enabled_left(kTotal), enabled_right(kTotal);
+    std::vector<float> disabled_left(kTotal), disabled_right(kTotal);
+    if (!Render(enabled, input_left, input_right, enabled_left, enabled_right)
+        || !Render(disabled, input_left, input_right, disabled_left, disabled_right)) {
+        return false;
+    }
+
+    result.left.resize(kTotal);
+    result.right.resize(kTotal);
+    for (std::size_t frame = 0; frame < kTotal; ++frame) {
+        result.left[frame] = enabled_left[frame] - disabled_left[frame];
+        result.right[frame] = enabled_right[frame] - disabled_right[frame];
+    }
+    result.latency = enabled.WetLatencyFrames();
+    return true;
+}
+
+std::size_t PeakFrame(const std::vector<float> &values) {
+    std::size_t peak_frame = 0;
+    float peak = 0.0F;
+    for (std::size_t frame = 0; frame < values.size(); ++frame) {
+        if (std::fabs(values[frame]) > peak) {
+            peak = std::fabs(values[frame]);
+            peak_frame = frame;
+        }
+    }
+    return peak_frame;
+}
+
+bool SameSignal(const std::vector<float> &left, const std::vector<float> &right,
+    float tolerance = 1.0e-6F) {
+    if (left.size() != right.size()) return false;
+    for (std::size_t frame = 0; frame < left.size(); ++frame) {
+        if (std::fabs(left[frame] - right[frame]) > tolerance) return false;
+    }
+    return true;
+}
+
+bool TestHaloLfeRenderRouting() {
+    iem::IemParams off_params{};
+    off_params.render_mode = iem::RenderMode::OFF;
+    off_params.order = 1;
+    LfeDeltaRender off;
+    if (!Check(RenderHaloLfeDelta(off_params, off), "render Halo Off LFE delta")) {
+        return false;
+    }
+    if (!Check(SameSignal(off.left, off.right), "Off mixes LFE equally to L/R")) {
+        return false;
+    }
+
+    iem::IemParams simple_params = off_params;
+    simple_params.render_mode = iem::RenderMode::SIMPLE;
+    LfeDeltaRender simple;
+    if (!Check(RenderHaloLfeDelta(simple_params, simple),
+            "render Halo Simple LFE delta")) return false;
+    if (!Check(SameSignal(off.left, simple.left),
+            "Off and Simple preserve the same LFE timeline")) return false;
+
+    simple_params.rotation.yaw_centidegrees = 9000;
+    LfeDeltaRender rotated;
+    if (!Check(RenderHaloLfeDelta(simple_params, rotated),
+            "render rotated Halo LFE delta")) return false;
+    if (!Check(SameSignal(simple.left, rotated.left),
+            "scene rotation does not alter LFE")) return false;
+
+    simple_params.rotation.yaw_centidegrees = 0;
+    simple_params.order = 3;
+    LfeDeltaRender order_three;
+    if (!Check(RenderHaloLfeDelta(simple_params, order_three),
+            "render order-three Halo LFE delta")) return false;
+    if (!Check(SameSignal(simple.left, order_three.left),
+            "Ambisonics order does not alter LFE")) return false;
+
+    iem::IemParams ku100_params = off_params;
+    ku100_params.render_mode = iem::RenderMode::KU100;
+    ku100_params.decoder.headphone_eq = iem::HeadphoneEqId::OFF;
+    LfeDeltaRender ku100;
+    if (!Check(RenderHaloLfeDelta(ku100_params, ku100),
+            "render Halo KU100 LFE delta")) return false;
+    const std::size_t off_peak = PeakFrame(off.left);
+    const std::size_t ku100_peak = PeakFrame(ku100.left);
+    return Check(ku100_peak > off_peak, "KU100 delays LFE after Halo encoding")
+        && Check(ku100_peak - off_peak == ku100.latency - off.latency,
+            "KU100 LFE delay matches the directional render latency")
+        && Check(SameSignal(ku100.left, ku100.right),
+            "KU100 mixes aligned LFE equally before headphone EQ");
+}
+
 bool TestFaultAndNoAllocation() {
     iem::IemParams params{};
     params.wet = 0.0F;
@@ -240,6 +365,7 @@ int main() {
     if (!TestDryAlignmentGainAndLimiter()) return 1;
     if (!TestWetPathEqFreezeAndReset()) return 1;
     if (!TestRenderModesAndHaloBranch()) return 1;
+    if (!TestHaloLfeRenderRouting()) return 1;
     if (!TestFaultAndNoAllocation()) return 1;
     std::puts("IEM pipeline tests passed");
     return 0;

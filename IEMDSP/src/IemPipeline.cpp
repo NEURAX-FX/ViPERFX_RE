@@ -47,6 +47,7 @@ bool IemPipeline::Prepare(const IemParams &params, std::size_t max_frames) noexc
     if (!limiter_.Prepare(96000)
         || !encoded_.Prepare(kMaxAmbisonicsChannels, max_frames)
         || !halo_bed_.Prepare(kHaloBedChannels, max_frames)
+        || !halo_lfe_.Prepare(1, max_frames)
         || !rotated_.Prepare(kMaxAmbisonicsChannels, max_frames)
         || !decoded_.Prepare(2, max_frames)
         || !equalized_.Prepare(2, max_frames)
@@ -62,6 +63,10 @@ bool IemPipeline::Prepare(const IemParams &params, std::size_t max_frames) noexc
     if (total_latency_frames_ > profile_config_.maximum_latency_ms * 96U) return false;
     dry_delay_.assign(static_cast<std::size_t>(2U) * wet_latency_frames_, 0.0F);
     dry_delay_index_ = 0;
+    lfe_delay_frames_ = Halo() != nullptr && params.render_mode == RenderMode::KU100
+        ? decoder_.LatencyFrames() : 0U;
+    lfe_delay_.assign(std::max(1U, lfe_delay_frames_), 0.0F);
+    lfe_delay_index_ = 0;
     wet_smoother_.Reset(std::clamp(params.wet, 0.0F, 1.0F));
     gain_smoother_.Reset(std::pow(10.0F,
         std::clamp(params.output_gain_db, -24.0F, 24.0F) / 20.0F));
@@ -106,17 +111,23 @@ bool IemPipeline::Process(const float *const stereo[2], float *const output[2],
         encoded_inputs[channel] = encoded_pointers[channel];
         rotated_inputs[channel] = rotated_pointers[channel];
     }
-    float *wet_outputs[2]{equalized_.ChannelData(0), equalized_.ChannelData(1)};
+    float *rendered_outputs[2]{decoded_.ChannelData(0), decoded_.ChannelData(1)};
+    float *wet_outputs[2]{rendered_outputs[0], rendered_outputs[1]};
+    const float *halo_lfe = nullptr;
     if (HaloEncoder *halo = Halo()) {
         std::array<float *, kHaloBedChannels> bed_pointers{};
         std::array<const float *, kHaloBedChannels> bed_inputs{};
+        HaloBedView bed_view{};
         for (uint32_t channel = 0; channel < kHaloBedChannels; ++channel) {
             bed_pointers[channel] = halo_bed_.ChannelData(channel);
             bed_inputs[channel] = bed_pointers[channel];
+            bed_view.directional[channel] = bed_pointers[channel];
         }
-        if (!halo->ProcessBed(stereo, bed_pointers.data(), frames)) return false;
+        bed_view.lfe = halo_lfe_.ChannelData(0);
+        halo_lfe = bed_view.lfe;
+        if (!halo->ProcessBed(stereo, bed_view, frames)) return false;
         if (params_.render_mode == RenderMode::OFF) {
-            FoldHaloBedToStereo(bed_inputs.data(), wet_outputs, frames);
+            FoldHaloBedToStereo(bed_inputs.data(), rendered_outputs, frames);
         } else {
             EncodeHaloBedToSn3d(params_.order, bed_inputs.data(), encoded_pointers.data(), frames);
         }
@@ -128,20 +139,29 @@ bool IemPipeline::Process(const float *const stereo[2], float *const output[2],
         if (!rotator_.Process(encoded_inputs.data(), rotated_pointers.data(), frames)) return false;
     }
     if (params_.render_mode == RenderMode::SIMPLE) {
-        if (!simple_decoder_.Process(rotated_inputs.data(), wet_outputs, frames)) return false;
+        if (!simple_decoder_.Process(rotated_inputs.data(), rendered_outputs, frames)) return false;
     } else if (params_.render_mode == RenderMode::OFF && Halo() == nullptr) {
-        if (!simple_decoder_.Process(encoded_inputs.data(), wet_outputs, frames)) return false;
+        if (!simple_decoder_.Process(encoded_inputs.data(), rendered_outputs, frames)) return false;
     } else if (params_.render_mode == RenderMode::KU100) {
-        float *decoded_outputs[2]{decoded_.ChannelData(0), decoded_.ChannelData(1)};
-        if (!decoder_.Process(rotated_inputs.data(), decoded_outputs, frames)) {
+        if (!decoder_.Process(rotated_inputs.data(), rendered_outputs, frames)) {
             error_ = decoder_.Error();
             return false;
         }
-        const float *decoded_inputs[2]{decoded_outputs[0], decoded_outputs[1]};
-        if (!headphone_eq_.Process(decoded_inputs, wet_outputs, frames)) {
+    }
+
+    if (halo_lfe != nullptr) {
+        MixDelayedLfe(rendered_outputs[0], rendered_outputs[1], halo_lfe, frames);
+    }
+
+    if (params_.render_mode == RenderMode::KU100) {
+        const float *decoded_inputs[2]{rendered_outputs[0], rendered_outputs[1]};
+        float *equalized_outputs[2]{equalized_.ChannelData(0), equalized_.ChannelData(1)};
+        if (!headphone_eq_.Process(decoded_inputs, equalized_outputs, frames)) {
             error_ = headphone_eq_.Error();
             return false;
         }
+        wet_outputs[0] = equalized_outputs[0];
+        wet_outputs[1] = equalized_outputs[1];
     }
 
     for (std::size_t frame = 0; frame < frames; ++frame) {
@@ -204,6 +224,24 @@ void IemPipeline::Reset() noexcept {
     gain_smoother_.Reset(std::pow(10.0F,
         std::clamp(params_.output_gain_db, -24.0F, 24.0F) / 20.0F));
     if (error_ == IemResourceError::PROCESS_NONFINITE) error_ = IemResourceError::NONE;
+}
+
+void IemPipeline::MixDelayedLfe(
+    float *left,
+    float *right,
+    const float *lfe,
+    std::size_t frames
+) noexcept {
+    for (std::size_t frame = 0; frame < frames; ++frame) {
+        float aligned = lfe[frame];
+        if (lfe_delay_frames_ != 0U) {
+            aligned = lfe_delay_[lfe_delay_index_];
+            lfe_delay_[lfe_delay_index_] = lfe[frame];
+            lfe_delay_index_ = (lfe_delay_index_ + 1U) % lfe_delay_frames_;
+        }
+        left[frame] += aligned;
+        right[frame] += aligned;
+    }
 }
 
 uint32_t IemPipeline::ActiveGrainCount() const noexcept {
@@ -277,13 +315,16 @@ bool IemPipeline::PrepareEncoder(const IemParams &params, std::size_t max_frames
 void IemPipeline::ClearRuntimeBuffers() noexcept {
     encoded_.Clear();
     halo_bed_.Clear();
+    halo_lfe_.Clear();
     rotated_.Clear();
     decoded_.Clear();
     equalized_.Clear();
     delayed_dry_.Clear();
     mix_.Clear();
     std::fill(dry_delay_.begin(), dry_delay_.end(), 0.0F);
+    std::fill(lfe_delay_.begin(), lfe_delay_.end(), 0.0F);
     dry_delay_index_ = 0;
+    lfe_delay_index_ = 0;
 }
 
 } // namespace iem

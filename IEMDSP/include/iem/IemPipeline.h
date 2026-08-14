@@ -72,6 +72,8 @@ private:
     HaloEncoder *Halo() noexcept;
     const HaloEncoder *Halo() const noexcept;
     bool PrepareEncoder(const IemParams &params, std::size_t max_frames) noexcept;
+    void MixDelayedLfe(float *left, float *right,
+        const float *lfe, std::size_t frames) noexcept;
     void ClearRuntimeBuffers() noexcept;
 
     IemParams params_{};
@@ -83,12 +85,14 @@ private:
     LinkedLookaheadLimiter limiter_{};
     AlignedPlanarBuffer encoded_{};
     AlignedPlanarBuffer halo_bed_{};
+    AlignedPlanarBuffer halo_lfe_{};
     AlignedPlanarBuffer rotated_{};
     AlignedPlanarBuffer decoded_{};
     AlignedPlanarBuffer equalized_{};
     AlignedPlanarBuffer delayed_dry_{};
     AlignedPlanarBuffer mix_{};
     std::vector<float> dry_delay_{};
+    std::vector<float> lfe_delay_{};
     LinearSmoother wet_smoother_{};
     LinearSmoother gain_smoother_{};
     LatencyProfileConfig profile_config_ = kLatencyProfiles[1];
@@ -96,6 +100,8 @@ private:
     uint32_t wet_latency_frames_ = 0;
     uint32_t total_latency_frames_ = 0;
     uint32_t dry_delay_index_ = 0;
+    uint32_t lfe_delay_frames_ = 0;
+    uint32_t lfe_delay_index_ = 0;
     IemResourceError error_ = IemResourceError::NONE;
     bool prepared_ = false;
 };
