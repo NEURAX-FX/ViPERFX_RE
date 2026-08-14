@@ -362,6 +362,38 @@ bool TestHaloLfeContract() {
         "Halo LFE controls are dynamic");
 }
 
+bool TestHaloDownmixContract() {
+    static_assert(iem::kParamHaloDownmixDelayEnable == 0x12090);
+    static_assert(iem::kParamHaloDownmixOutputRightTrim == 0x120AC);
+
+    iem::IemParams params{};
+    if (!Check(params.decoder.downmix.delay_enable,
+            "Downmix delay defaults enabled")) return false;
+    if (!Check(params.decoder.downmix.center_trim_millionths == 744444,
+            "Downmix center trim default")) return false;
+    if (!Check(Updated(params, iem::kParamHaloDownmixLsDelay, -1)
+            && params.decoder.downmix.ls_delay_us == 0,
+            "clamp Downmix delay minimum")) return false;
+    if (!Check(Updated(params, iem::kParamHaloDownmixRsrDelay, 50000)
+            && params.decoder.downmix.rsr_delay_us == 32000,
+            "clamp Downmix delay maximum")) return false;
+    if (!Check(Updated(params, iem::kParamHaloDownmixPanLeft, -1)
+            && params.decoder.downmix.pan_left_millionths == 0,
+            "clamp Downmix normalized minimum")) return false;
+    if (!Check(Updated(params, iem::kParamHaloDownmixOutputRightTrim, 1000001)
+            && params.decoder.downmix.output_right_trim_millionths == 1000000,
+            "clamp Downmix normalized maximum")) return false;
+    if (!Check(iem::UpdateIemParameterSnapshot(params,
+            iem::kParamHaloDownmixOutputHpfEnable, 2, 0, 0)
+            == iem::ParamUpdate::INVALID,
+            "reject invalid Downmix boolean")) return false;
+
+    iem::IemParams right{};
+    right.decoder.downmix.center_divergence_millionths = 500000;
+    return Check(!iem::HasStructuralDifference(iem::IemParams{}, right),
+        "Downmix controls are dynamic");
+}
+
 } // namespace
 
 int main() {
@@ -373,6 +405,7 @@ int main() {
     if (!TestInvalidValuesAndCommands()) return 1;
     if (!TestHaloAndRenderModeContract()) return 1;
     if (!TestHaloLfeContract()) return 1;
+    if (!TestHaloDownmixContract()) return 1;
     std::puts("IEM parameter tests passed");
     return 0;
 }

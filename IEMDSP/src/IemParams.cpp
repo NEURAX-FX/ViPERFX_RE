@@ -241,6 +241,122 @@ ParamUpdate UpdateIemParameterSnapshot(
         params.halo.lfe.gain_linear = HaloLfeGainLinear(
             params.halo.lfe.gain_millionths);
         return ParamUpdate::UPDATED;
+    case kParamHaloDownmixDelayEnable:
+        return SetBool(params.decoder.downmix.delay_enable, val1);
+    case kParamHaloDownmixLsDelay:
+        SetClamped(params.decoder.downmix.ls_delay_us, val1, 0, 32000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixRsDelay:
+        SetClamped(params.decoder.downmix.rs_delay_us, val1, 0, 32000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixLsrDelay:
+        SetClamped(params.decoder.downmix.lsr_delay_us, val1, 0, 32000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixRsrDelay:
+        SetClamped(params.decoder.downmix.rsr_delay_us, val1, 0, 32000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixSideShelfEnable:
+        return SetBool(params.decoder.downmix.side_shelf_enable, val1);
+    case kParamHaloDownmixSideShelfFrequency:
+        SetClamped(params.decoder.downmix.side_shelf_frequency_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixSideShelfGain:
+        SetClamped(params.decoder.downmix.side_shelf_gain_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixRearShelfEnable:
+        return SetBool(params.decoder.downmix.rear_shelf_enable, val1);
+    case kParamHaloDownmixRearShelfFrequency:
+        SetClamped(params.decoder.downmix.rear_shelf_frequency_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixRearShelfGain:
+        SetClamped(params.decoder.downmix.rear_shelf_gain_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixPanLeft:
+        SetClamped(params.decoder.downmix.pan_left_millionths, val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixPanRight:
+        SetClamped(params.decoder.downmix.pan_right_millionths, val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixCenterDivergence:
+        SetClamped(params.decoder.downmix.center_divergence_millionths,
+            val1, 0, 1000000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixFrontMidTrim:
+        SetClamped(params.decoder.downmix.front_mid_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixFrontSideTrim:
+        SetClamped(params.decoder.downmix.front_side_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixCenterTrim:
+        SetClamped(params.decoder.downmix.center_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixSurroundMidTrim:
+        SetClamped(params.decoder.downmix.surround_mid_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixSurroundSideTrim:
+        SetClamped(params.decoder.downmix.surround_side_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixRearMidTrim:
+        SetClamped(params.decoder.downmix.rear_mid_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixRearSideTrim:
+        SetClamped(params.decoder.downmix.rear_side_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixLfeTrim:
+        SetClamped(params.decoder.downmix.lfe_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixLfeLpfEnable:
+        return SetBool(params.decoder.downmix.lfe_lpf_enable, val1);
+    case kParamHaloDownmixLfeLpfFrequency:
+        SetClamped(params.decoder.downmix.lfe_lpf_frequency_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixScaleInputByOutputCount:
+        return SetBool(params.decoder.downmix.scale_input_by_output_count, val1);
+    case kParamHaloDownmixOutputHpfEnable:
+        return SetBool(params.decoder.downmix.output_hpf_enable, val1);
+    case kParamHaloDownmixOutputHpfFrequency:
+        SetClamped(params.decoder.downmix.output_hpf_frequency_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixOutputLeftTrim:
+        SetClamped(params.decoder.downmix.output_left_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
+    case kParamHaloDownmixOutputRightTrim:
+        SetClamped(params.decoder.downmix.output_right_trim_millionths,
+            val1, 0, 1000000);
+        RefreshHaloDownmixDerived(params.decoder.downmix);
+        return ParamUpdate::UPDATED;
     case kParamIemResourceReset:
     case kCommandResetRotation:
     case kCommandResetIemRuntime:

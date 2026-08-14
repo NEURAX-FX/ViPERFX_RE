@@ -1,5 +1,7 @@
 #pragma once
 
+#include "iem/HaloDownmixParams.h"
+
 #include <array>
 #include <cstdint>
 #include <type_traits>
@@ -79,6 +81,36 @@ constexpr int kParamHaloLfeEnable = 0x1207E;
 constexpr int kParamHaloLfeFrequency = 0x1207F;
 constexpr int kParamHaloLfeSplit = 0x12080;
 constexpr int kParamHaloLfeGain = 0x12081;
+
+constexpr int kParamHaloDownmixDelayEnable = 0x12090;
+constexpr int kParamHaloDownmixLsDelay = 0x12091;
+constexpr int kParamHaloDownmixRsDelay = 0x12092;
+constexpr int kParamHaloDownmixLsrDelay = 0x12093;
+constexpr int kParamHaloDownmixRsrDelay = 0x12094;
+constexpr int kParamHaloDownmixSideShelfEnable = 0x12095;
+constexpr int kParamHaloDownmixSideShelfFrequency = 0x12096;
+constexpr int kParamHaloDownmixSideShelfGain = 0x12097;
+constexpr int kParamHaloDownmixRearShelfEnable = 0x12098;
+constexpr int kParamHaloDownmixRearShelfFrequency = 0x12099;
+constexpr int kParamHaloDownmixRearShelfGain = 0x1209A;
+constexpr int kParamHaloDownmixPanLeft = 0x1209B;
+constexpr int kParamHaloDownmixPanRight = 0x1209C;
+constexpr int kParamHaloDownmixCenterDivergence = 0x1209D;
+constexpr int kParamHaloDownmixFrontMidTrim = 0x1209E;
+constexpr int kParamHaloDownmixFrontSideTrim = 0x1209F;
+constexpr int kParamHaloDownmixCenterTrim = 0x120A0;
+constexpr int kParamHaloDownmixSurroundMidTrim = 0x120A1;
+constexpr int kParamHaloDownmixSurroundSideTrim = 0x120A2;
+constexpr int kParamHaloDownmixRearMidTrim = 0x120A3;
+constexpr int kParamHaloDownmixRearSideTrim = 0x120A4;
+constexpr int kParamHaloDownmixLfeTrim = 0x120A5;
+constexpr int kParamHaloDownmixLfeLpfEnable = 0x120A6;
+constexpr int kParamHaloDownmixLfeLpfFrequency = 0x120A7;
+constexpr int kParamHaloDownmixScaleInputByOutputCount = 0x120A8;
+constexpr int kParamHaloDownmixOutputHpfEnable = 0x120A9;
+constexpr int kParamHaloDownmixOutputHpfFrequency = 0x120AA;
+constexpr int kParamHaloDownmixOutputLeftTrim = 0x120AB;
+constexpr int kParamHaloDownmixOutputRightTrim = 0x120AC;
 
 constexpr int kParamIemResourceReset = 0x12100;
 constexpr int kCommandResetRotation = 0x12101;
@@ -194,6 +226,7 @@ struct RotationParams {
 
 struct DecoderParams {
     HeadphoneEqId headphone_eq = HeadphoneEqId::OFF;
+    HaloDownmixParams downmix{};
 };
 
 struct HaloLfeCoefficients {
