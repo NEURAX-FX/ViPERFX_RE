@@ -75,6 +75,10 @@ constexpr int kParamHaloBackBoost = 0x1207A;
 constexpr int kParamHaloRearShelfEnable = 0x1207B;
 constexpr int kParamHaloRearShelfFreq = 0x1207C;
 constexpr int kParamHaloRearShelfGain = 0x1207D;
+constexpr int kParamHaloLfeEnable = 0x1207E;
+constexpr int kParamHaloLfeFrequency = 0x1207F;
+constexpr int kParamHaloLfeSplit = 0x12080;
+constexpr int kParamHaloLfeGain = 0x12081;
 
 constexpr int kParamIemResourceReset = 0x12100;
 constexpr int kCommandResetRotation = 0x12101;
@@ -192,6 +196,22 @@ struct DecoderParams {
     HeadphoneEqId headphone_eq = HeadphoneEqId::OFF;
 };
 
+struct HaloLfeCoefficients {
+    float b0 = 0.00000953702965F;
+    float b1 = 0.0000190740593F;
+    float b2 = 0.00000953702965F;
+    float fb1 = 1.99379110F;
+    float fb2 = -0.993829250F;
+};
+
+struct HaloLfeParams {
+    bool enabled = true;
+    int32_t frequency_millionths = 750000;
+    int32_t split_millionths = 0;
+    int32_t gain_millionths = 272727;
+    HaloLfeCoefficients coefficients_96k{};
+};
+
 struct HaloParams {
     int32_t dialog_isolate_thousandths = 0;
     int32_t dialog_aggress_thousandths = 500;
@@ -207,6 +227,7 @@ struct HaloParams {
     bool rear_shelf_enable = true;
     int32_t rear_shelf_freq_thousandths = 816;
     int32_t rear_shelf_gain_thousandths = 475;
+    HaloLfeParams lfe{};
 };
 
 struct LimiterParams {

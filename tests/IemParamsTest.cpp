@@ -325,6 +325,43 @@ bool TestHaloAndRenderModeContract() {
         "Halo encoder mode is structural");
 }
 
+bool TestHaloLfeContract() {
+    static_assert(iem::kParamHaloLfeEnable == 0x1207E);
+    static_assert(iem::kParamHaloLfeFrequency == 0x1207F);
+    static_assert(iem::kParamHaloLfeSplit == 0x12080);
+    static_assert(iem::kParamHaloLfeGain == 0x12081);
+
+    iem::IemParams defaults{};
+    if (!Check(defaults.halo.lfe.enabled, "Halo LFE defaults enabled")) return false;
+    if (!Check(defaults.halo.lfe.frequency_millionths == 750000,
+            "Halo LFE frequency default")) return false;
+    if (!Check(defaults.halo.lfe.split_millionths == 0,
+            "Halo LFE split default")) return false;
+    if (!Check(defaults.halo.lfe.gain_millionths == 272727,
+            "Halo LFE gain default")) return false;
+    if (!Check(Near(defaults.halo.lfe.coefficients_96k.b0, 0.00000953702965F)
+            && Near(defaults.halo.lfe.coefficients_96k.fb1, 1.99379110F),
+            "Halo LFE default 96 kHz coefficients")) return false;
+
+    if (!Check(Updated(defaults, iem::kParamHaloLfeEnable, 0)
+            && !defaults.halo.lfe.enabled,
+            "disable Halo LFE")) return false;
+    if (!Check(Updated(defaults, iem::kParamHaloLfeFrequency, 1500000)
+            && defaults.halo.lfe.frequency_millionths == 1000000,
+            "clamp Halo LFE frequency")) return false;
+    if (!Check(Updated(defaults, iem::kParamHaloLfeSplit, -1)
+            && defaults.halo.lfe.split_millionths == 0,
+            "clamp Halo LFE split")) return false;
+    if (!Check(Updated(defaults, iem::kParamHaloLfeGain, 1000001)
+            && defaults.halo.lfe.gain_millionths == 1000000,
+            "clamp Halo LFE gain")) return false;
+
+    iem::IemParams right{};
+    right.halo.lfe.split_millionths = 1000000;
+    return Check(!iem::HasStructuralDifference(iem::IemParams{}, right),
+        "Halo LFE controls are dynamic");
+}
+
 } // namespace
 
 int main() {
@@ -335,6 +372,7 @@ int main() {
     if (!TestRotationDecoderAndStructuralChanges()) return 1;
     if (!TestInvalidValuesAndCommands()) return 1;
     if (!TestHaloAndRenderModeContract()) return 1;
+    if (!TestHaloLfeContract()) return 1;
     std::puts("IEM parameter tests passed");
     return 0;
 }

@@ -225,6 +225,17 @@ ParamUpdate UpdateIemParameterSnapshot(
     case kParamHaloRearShelfGain:
         SetClamped(params.halo.rear_shelf_gain_thousandths, val1, 0, 1000);
         return ParamUpdate::UPDATED;
+    case kParamHaloLfeEnable:
+        return SetBool(params.halo.lfe.enabled, val1);
+    case kParamHaloLfeFrequency:
+        SetClamped(params.halo.lfe.frequency_millionths, val1, 0, 1000000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloLfeSplit:
+        SetClamped(params.halo.lfe.split_millionths, val1, 0, 1000000);
+        return ParamUpdate::UPDATED;
+    case kParamHaloLfeGain:
+        SetClamped(params.halo.lfe.gain_millionths, val1, 0, 1000000);
+        return ParamUpdate::UPDATED;
     case kParamIemResourceReset:
     case kCommandResetRotation:
     case kCommandResetIemRuntime:
