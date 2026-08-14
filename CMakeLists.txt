@@ -197,6 +197,10 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_halo_downmix_params_test PRIVATE IEMDSP)
     add_test(NAME iem_halo_downmix_params_test COMMAND iem_halo_downmix_params_test)
 
+    add_executable(iem_halo_downmix_processor_test tests/IemHaloDownmixProcessorTest.cpp)
+    target_link_libraries(iem_halo_downmix_processor_test PRIVATE IEMDSP)
+    add_test(NAME iem_halo_downmix_processor_test COMMAND iem_halo_downmix_processor_test)
+
     add_executable(iem_halo_encoder_test tests/IemHaloEncoderTest.cpp)
     target_link_libraries(iem_halo_encoder_test PRIVATE IEMDSP)
     add_test(NAME iem_halo_encoder_test COMMAND iem_halo_encoder_test)
