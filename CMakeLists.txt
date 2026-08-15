@@ -122,6 +122,16 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(dsp_resources_test PRIVATE ViPERDSP m)
     add_test(NAME dsp_resources_test COMMAND dsp_resources_test)
 
+    add_executable(session0_state_cache_test
+        tests/Session0StateCacheTest.cpp
+        src/Session0StateCache.cpp
+    )
+    target_include_directories(session0_state_cache_test PRIVATE
+        src ViPERDSP ViPERDSP/include IEMDSP/include)
+    target_link_libraries(session0_state_cache_test PRIVATE
+        IEMDSP ViPERDSP Threads::Threads)
+    add_test(NAME session0_state_cache_test COMMAND session0_state_cache_test)
+
     add_executable(dsp_graph_slots_test
         tests/DspGraphSlotsTest.cpp
         src/AudioFormat.cpp
@@ -316,6 +326,7 @@ add_library(v4a_re SHARED
     src/IemResources.cpp
     src/ParameterMailbox.cpp
     src/DspResources.cpp
+    src/Session0StateCache.cpp
     src/ViPER4Android.cpp
     src/ViperContext.cpp
 )
