@@ -3,6 +3,8 @@
 #include "viper/utils/Crc32.h"
 #include <algorithm>
 #include <cstring>
+#include <memory>
+#include <utility>
 
 namespace viper::audio {
 namespace {
@@ -17,6 +19,21 @@ void ClearPendingConvolver(
     buffer.clear();
     size = 0;
     channels = 0;
+}
+
+CommittedDspResourceSnapshot CopyCommitted(
+    const CommittedDspResourcePtr &committed
+) {
+    return committed != nullptr
+        ? *committed
+        : CommittedDspResourceSnapshot{};
+}
+
+CommittedDspResourcePtr PublishCommitted(
+    CommittedDspResourceSnapshot snapshot
+) {
+    return std::make_shared<const CommittedDspResourceSnapshot>(
+        std::move(snapshot));
 }
 
 } // namespace
@@ -38,9 +55,11 @@ ResourceCaptureResult DspResources::CaptureRaw(
                     pending_convolver_size_,
                     pending_convolver_channels_
                 );
-                convolver_kernel_.clear();
-                convolver_channels_ = 0;
-                convolver_kernel_id_ = 0;
+                auto next = CopyCommitted(committed_);
+                next.convolver_kernel.clear();
+                next.convolver_channels = 0;
+                next.convolver_kernel_id = 0;
+                committed_ = PublishCommitted(std::move(next));
                 return ResourceCaptureResult::CLEARED;
             }
             if ((val2 != 1 && val2 != 2 && val2 != 4)
@@ -93,9 +112,11 @@ ResourceCaptureResult DspResources::CaptureRaw(
                 );
                 return ResourceCaptureResult::INVALID;
             }
-            convolver_kernel_ = pending_convolver_;
-            convolver_channels_ = pending_convolver_channels_;
-            convolver_kernel_id_ = val3;
+            auto next = CopyCommitted(committed_);
+            next.convolver_kernel = pending_convolver_;
+            next.convolver_channels = pending_convolver_channels_;
+            next.convolver_kernel_id = val3;
+            committed_ = PublishCommitted(std::move(next));
             ClearPendingConvolver(
                 pending_convolver_,
                 pending_convolver_size_,
@@ -110,20 +131,22 @@ ResourceCaptureResult DspResources::CaptureRaw(
             }
             const auto *coefficients = reinterpret_cast<const float *>(arr);
             const size_t section_count = arr_size / 5;
-            ddc_44100_.resize(section_count);
-            ddc_48000_.resize(section_count);
+            auto next = CopyCommitted(committed_);
+            next.ddc_44100.resize(section_count);
+            next.ddc_48000.resize(section_count);
             for (size_t section = 0; section < section_count; ++section) {
                 std::memcpy(
-                    ddc_44100_[section].data(),
+                    next.ddc_44100[section].data(),
                     coefficients + section * 5,
                     5 * sizeof(float)
                 );
                 std::memcpy(
-                    ddc_48000_[section].data(),
+                    next.ddc_48000[section].data(),
                     coefficients + arr_size + section * 5,
                     5 * sizeof(float)
                 );
             }
+            committed_ = PublishCommitted(std::move(next));
             return ResourceCaptureResult::COMMITTED;
         }
 
@@ -135,33 +158,50 @@ ResourceCaptureResult DspResources::CaptureRaw(
 bool DspResources::ApplyTo(DspGraph &graph) const {
     if (HasDdcCoefficients()) {
         graph.Engine().LoadDdcCoefficients(
-            ddc_44100_.data(),
-            ddc_48000_.data(),
-            static_cast<uint32_t>(ddc_44100_.size())
+            committed_->ddc_44100.data(),
+            committed_->ddc_48000.data(),
+            static_cast<uint32_t>(committed_->ddc_44100.size())
         );
     }
     if (HasConvolverKernel()) {
-        const size_t frames = convolver_kernel_.size() / convolver_channels_;
+        const size_t frames = committed_->convolver_kernel.size()
+            / committed_->convolver_channels;
         graph.Engine().LoadConvolverKernel(
-            convolver_kernel_.data(),
+            committed_->convolver_kernel.data(),
             static_cast<int>(frames),
-            static_cast<int>(convolver_channels_),
-            convolver_kernel_id_
+            static_cast<int>(committed_->convolver_channels),
+            committed_->convolver_kernel_id
         );
-        if (graph.Engine().GetConvolverKernelID() != convolver_kernel_id_) return false;
+        if (graph.Engine().GetConvolverKernelID()
+            != committed_->convolver_kernel_id) return false;
     }
     return true;
 }
 
 bool DspResources::HasConvolverKernel() const noexcept {
-    return !convolver_kernel_.empty()
-        && (convolver_channels_ == 1 || convolver_channels_ == 2
-            || convolver_channels_ == 4)
-        && convolver_kernel_.size() % convolver_channels_ == 0;
+    return committed_ != nullptr
+        && !committed_->convolver_kernel.empty()
+        && (committed_->convolver_channels == 1
+            || committed_->convolver_channels == 2
+            || committed_->convolver_channels == 4)
+        && committed_->convolver_kernel.size()
+            % committed_->convolver_channels == 0;
 }
 
 bool DspResources::HasDdcCoefficients() const noexcept {
-    return !ddc_44100_.empty() && ddc_44100_.size() == ddc_48000_.size();
+    return committed_ != nullptr
+        && !committed_->ddc_44100.empty()
+        && committed_->ddc_44100.size() == committed_->ddc_48000.size();
+}
+
+CommittedDspResourcePtr DspResources::CommittedSnapshot() const noexcept {
+    return committed_;
+}
+
+void DspResources::RestoreCommittedSnapshot(
+    CommittedDspResourcePtr snapshot
+) noexcept {
+    committed_ = std::move(snapshot);
 }
 
 } // namespace viper::audio

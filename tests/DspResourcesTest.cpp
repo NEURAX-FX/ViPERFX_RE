@@ -13,6 +13,46 @@ bool Check(bool condition, const char *message) {
     return false;
 }
 
+bool CommitKernel(
+    viper::audio::DspResources &resources,
+    int kernel_id,
+    uint32_t channels = 2
+) {
+    using namespace viper::params;
+    std::array<float, 32> kernel{};
+    for (size_t index = 0; index < kernel.size(); ++index) {
+        kernel[index] = index == 0 ? 1.0F : static_cast<float>(index) * 0.01F;
+    }
+    const uint32_t crc = Crc32(
+        reinterpret_cast<const uint8_t *>(kernel.data()),
+        kernel.size() * sizeof(float)
+    );
+    return resources.CaptureRaw(
+               kParamConvolverPrepareBuffer,
+               kernel.size(),
+               channels,
+               0,
+               0,
+               nullptr
+           ) == viper::audio::ResourceCaptureResult::UPDATED
+        && resources.CaptureRaw(
+               kParamConvolverSetBuffer,
+               0,
+               0,
+               0,
+               kernel.size(),
+               reinterpret_cast<const signed char *>(kernel.data())
+           ) == viper::audio::ResourceCaptureResult::UPDATED
+        && resources.CaptureRaw(
+               kParamConvolverCommitBuffer,
+               kernel.size(),
+               crc,
+               kernel_id,
+               0,
+               nullptr
+           ) == viper::audio::ResourceCaptureResult::COMMITTED;
+}
+
 bool TestConvolverKernelReplaysIntoReplacementGraph() {
     using namespace viper::params;
     viper::audio::DspResources resources;
@@ -200,6 +240,58 @@ bool TestInvalidResourceDoesNotReplaceCommittedState() {
     );
 }
 
+bool TestCommittedSnapshotCanBeSharedAndRestored() {
+    viper::audio::DspResources source;
+    if (!Check(CommitKernel(source, 77), "commit shared convolver snapshot")) {
+        return false;
+    }
+    const auto snapshot = source.CommittedSnapshot();
+    if (!Check(snapshot != nullptr, "export committed resource snapshot")) return false;
+
+    viper::audio::DspResources restored;
+    restored.RestoreCommittedSnapshot(snapshot);
+    if (!Check(
+            restored.CommittedSnapshot() == snapshot,
+            "restore shares immutable snapshot"
+        )) {
+        return false;
+    }
+
+    viper::audio::DspGraph replacement;
+    if (!replacement.Prepare({48000, 8192, 2})) return false;
+    return Check(restored.ApplyTo(replacement), "apply restored resources")
+        && Check(
+            replacement.Engine().GetConvolverKernelID() == 77,
+            "restored kernel reaches replacement graph"
+        );
+}
+
+bool TestIncompleteUploadDoesNotReplaceSharedSnapshot() {
+    using namespace viper::params;
+    viper::audio::DspResources resources;
+    if (!Check(CommitKernel(resources, 23), "commit baseline shared snapshot")) {
+        return false;
+    }
+    const auto before = resources.CommittedSnapshot();
+    if (!Check(
+            resources.CaptureRaw(
+                kParamConvolverPrepareBuffer,
+                64,
+                2,
+                0,
+                0,
+                nullptr
+            ) == viper::audio::ResourceCaptureResult::UPDATED,
+            "start incomplete upload"
+        )) {
+        return false;
+    }
+    return Check(
+        resources.CommittedSnapshot() == before,
+        "pending upload preserves committed snapshot"
+    );
+}
+
 } // namespace
 
 int main() {
@@ -207,6 +299,8 @@ int main() {
     if (!TestDdcCoefficientsAffectReplacementGraph()) return 1;
     if (!TestInvalidResourceDoesNotReplaceCommittedState()) return 1;
     if (!TestUnsupportedChannelCountPreservesCommittedState()) return 1;
+    if (!TestCommittedSnapshotCanBeSharedAndRestored()) return 1;
+    if (!TestIncompleteUploadDoesNotReplaceSharedSnapshot()) return 1;
     std::puts("DSP resource tests passed");
     return 0;
 }
