@@ -10,6 +10,15 @@
 
 namespace viper::audio {
 
+void IemContext::RestoreCachedState(
+    const iem::IemParams &params,
+    uint64_t resource_generation
+) noexcept {
+    if (prepared_) return;
+    parameter_snapshot_ = params;
+    resources_.RestoreGeneration(resource_generation);
+}
+
 bool IemContext::Prepare(
     uint32_t host_sample_rate,
     std::size_t max_block_frames
@@ -76,6 +85,7 @@ bool IemContext::DispatchRawParam(
             previous_snapshot, parameter_snapshot_);
         if (structural_change) structural_dirty_ = true;
         parameter_mailbox_.Publish(parameter_snapshot_);
+        ++state_revision_;
         if (parameter_snapshot_.enable && structural_dirty_) {
             TryPrepareDesiredGraph();
         } else if (structural_change) {
@@ -106,6 +116,7 @@ bool IemContext::DispatchRawParam(
         parameter_snapshot_.rotation.pitch_centidegrees = 0;
         parameter_snapshot_.rotation.roll_centidegrees = 0;
         parameter_mailbox_.Publish(parameter_snapshot_);
+        ++state_revision_;
         std::array<IemGraph *, 3> graphs{
             graph_slots_.Active(), graph_slots_.Pending(), graph_slots_.Previous()
         };
@@ -119,6 +130,7 @@ bool IemContext::DispatchRawParam(
         return true;
     }
     if (!resources_.CaptureRaw(param, val1)) return true;
+    ++state_revision_;
     structural_dirty_ = true;
     if (!prepared_ || !parameter_snapshot_.enable) {
         last_preparation_result_.store(

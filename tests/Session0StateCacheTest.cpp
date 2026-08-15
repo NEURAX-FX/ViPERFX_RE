@@ -68,12 +68,24 @@ bool TestStoresReplaceOnlyOwnedFields() {
         && Check(state.active, "active store updates active flag");
 }
 
+bool TestSessionGateAppliesOnlyToOutputMix() {
+    return Check(viper::audio::IsSession0(0), "session zero is output mix")
+        && Check(!viper::audio::IsSession0(42), "dynamic session is not output mix")
+        && Check(viper::audio::ShouldBypassSession0(0, false),
+            "inactive output mix is bypassed")
+        && Check(!viper::audio::ShouldBypassSession0(0, true),
+            "active output mix processes")
+        && Check(!viper::audio::ShouldBypassSession0(42, false),
+            "dynamic session ignores global gate");
+}
+
 } // namespace
 
 int main() {
     if (!TestDefaultsAreSafeBypass()) return 1;
     if (!TestValidatedStateRoundTrips()) return 1;
     if (!TestStoresReplaceOnlyOwnedFields()) return 1;
+    if (!TestSessionGateAppliesOnlyToOutputMix()) return 1;
     std::puts("Session 0 state cache tests passed");
     return 0;
 }

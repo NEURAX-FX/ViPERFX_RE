@@ -4,6 +4,7 @@
 #include "DspResources.h"
 #include "IemContext.h"
 #include "ParameterMailbox.h"
+#include "Session0StateCache.h"
 #include "essential.h"
 #include "viper/ParameterSnapshot.h"
 #include "viper/effects/AudioAnalyzer.h"
@@ -22,7 +23,7 @@ public:
         INVALID_FORMAT,
     };
 
-    ViperContext();
+    ViperContext(int32_t session_id, int32_t io_id);
 
     int32_t HandleCommand(
         uint32_t cmd_code,
@@ -46,6 +47,10 @@ private:
 
     // Viper
     bool enable_;
+    int32_t session_id_ = -1;
+    int32_t io_id_ = -1;
+    bool session0_active_ = false;
+    uint64_t session0_cache_generation_ = 0;
     viper::audio::DspGraphSlots graph_slots_;
     viper::audio::DspResources resources_;
     viper::audio::ParameterMailbox parameter_mailbox_;

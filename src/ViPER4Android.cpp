@@ -68,7 +68,7 @@ static int32_t ViperLibraryCreate(
 
     auto *viper_handle = new ViperHandle();
     viper_handle->interface = &kViperInterface;
-    viper_handle->context = new ViperContext();
+    viper_handle->context = new ViperContext(session_id, io_id);
     *handle = reinterpret_cast<effect_handle_t>(viper_handle);
     VIPER_LOGI(
         "ViperLibraryCreate: session_id=%d, io_id=%d, context=%p",
@@ -85,6 +85,7 @@ static int32_t ViperLibraryRelease(effect_handle_t handle) {
 
     VIPER_LOGI("ViperLibraryRelease: context=%p", viper_handle->context);
     delete viper_handle->context;
+    delete viper_handle;
     return 0;
 }
 
