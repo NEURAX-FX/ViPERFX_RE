@@ -10,8 +10,8 @@ namespace viper {
 
 constexpr uint32_t kTelemetryVersion = 1;
 constexpr uint32_t kTelemetryWireSize = 320;
-constexpr uint32_t kIemTelemetryVersion = 3;
-constexpr uint32_t kIemTelemetryWireSize = 168;
+constexpr uint32_t kIemTelemetryVersion = 4;
+constexpr uint32_t kIemTelemetryWireSize = 200;
 
 struct TelemetryWire {
     uint32_t version;
@@ -61,6 +61,12 @@ struct IemTelemetryWire {
     uint32_t preparation_result;
     float latency_ms;
     float limiter_gain_reduction_db;
+    int32_t audio_session_id;
+    uint32_t session0_active;
+    uint64_t session0_cache_generation;
+    uint64_t context_instance_id;
+    uint32_t session0_live_context_count;
+    uint32_t reserved_session0;
 };
 
 static_assert(
