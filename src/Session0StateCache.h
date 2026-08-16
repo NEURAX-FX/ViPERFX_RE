@@ -12,17 +12,6 @@ namespace viper::audio {
 
 constexpr int kParamDriverSession0Active = 0x120F0;
 
-constexpr bool IsSession0(int32_t session_id) noexcept {
-    return session_id == 0;
-}
-
-constexpr bool ShouldBypassSession0(
-    int32_t session_id,
-    bool active
-) noexcept {
-    return IsSession0(session_id) && !active;
-}
-
 struct Session0CachedState final {
     bool initialized = false;
     bool active = false;

@@ -83,39 +83,6 @@ bool TestDispatchIsolationAndResourceGeneration() {
     return Check(context.Process(audio.data(), 1024), "consume resource replacement graph");
 }
 
-bool TestCachedStateRestoresBeforePrepare() {
-    iem::IemParams params{};
-    params.enable = true;
-    params.wet = 0.42F;
-    viper::audio::IemContext context;
-    context.RestoreCachedState(params, 9);
-    if (!Check(context.Prepare(48000, 256), "prepare restored IEM context")) {
-        return false;
-    }
-    return Check(context.Params().enable, "restore IEM enable")
-        && Check(std::fabs(context.Params().wet - 0.42F) < 1.0e-6F,
-            "restore IEM wet")
-        && Check(context.ResourceGeneration() == 9,
-            "restore IEM resource generation");
-}
-
-bool TestStateRevisionIgnoresInvalidAndRuntimeOnlyCommands() {
-    viper::audio::IemContext context;
-    const uint64_t initial = context.StateRevision();
-    if (!Check(context.DispatchRawParam(iem::kParamIemEnable, 2, 0, 0),
-            "handle invalid IEM boolean")) return false;
-    if (!Check(context.StateRevision() == initial,
-            "invalid IEM parameter does not advance revision")) return false;
-    if (!Check(context.DispatchRawParam(iem::kCommandGranularFreeze, 1, 0, 0),
-            "handle runtime freeze")) return false;
-    if (!Check(context.StateRevision() == initial,
-            "runtime-only command does not advance revision")) return false;
-    if (!Check(context.DispatchRawParam(iem::kParamIemWet, 65, 0, 0),
-            "handle valid IEM parameter")) return false;
-    return Check(context.StateRevision() == initial + 1,
-        "valid IEM parameter advances revision");
-}
-
 bool TestOversizedFailurePreservesInput() {
     viper::audio::IemContext context;
     if (!context.Prepare(48000, 256)) return false;
@@ -252,8 +219,6 @@ int main() {
     if (!TestDisabledFixturesStayBitIdentical()) return 1;
     if (!TestPostViperBufferIsTheIemInput()) return 1;
     if (!TestDispatchIsolationAndResourceGeneration()) return 1;
-    if (!TestCachedStateRestoresBeforePrepare()) return 1;
-    if (!TestStateRevisionIgnoresInvalidAndRuntimeOnlyCommands()) return 1;
     if (!TestOversizedFailurePreservesInput()) return 1;
     if (!TestResetKeepsViPERStateIndependent()) return 1;
     if (!TestStructuralDeferralAndLatestWins()) return 1;

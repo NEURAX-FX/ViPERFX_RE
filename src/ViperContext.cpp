@@ -20,7 +20,7 @@ constexpr int32_t kParamGetArchitecture = 8;
 constexpr int32_t kParamGetTelemetry = 9;
 constexpr int32_t kParamGetIemTelemetry = 10;
 
-ViperContext::ViperContext(int32_t session_id, int32_t io_id) :
+ViperContext::ViperContext() :
     config_({}),
     disable_reason_(DisableReason::NONE),
     buffer_(std::vector<float>()),
@@ -28,28 +28,8 @@ ViperContext::ViperContext(int32_t session_id, int32_t io_id) :
     previous_buffer_(std::vector<float>()),
     buffer_frame_count_(0),
     enable_(false),
-    session_id_(session_id),
-    io_id_(io_id),
     has_processed_(false) {
-    if (viper::audio::IsSession0(session_id_)) {
-        const auto cached = viper::audio::Session0StateCache::Instance().Load();
-        if (cached.initialized) {
-            session0_active_ = cached.active;
-            session0_cache_generation_ = cached.generation;
-            parameter_snapshot_ = cached.params;
-            resources_.RestoreCommittedSnapshot(cached.dsp_resources);
-            iem_context_.RestoreCachedState(
-                cached.iem_params,
-                cached.iem_resource_generation
-            );
-        }
-    }
-    VIPER_LOGI(
-        "ViperContext created: session_id=%d, io_id=%d, cache_generation=%llu",
-        session_id_,
-        io_id_,
-        static_cast<unsigned long long>(session0_cache_generation_)
-    );
+    VIPER_LOGI("ViperContext created");
 }
 
 void ViperContext::CopyBufferConfig(buffer_config_t *dest, buffer_config_t *src) {
@@ -243,47 +223,13 @@ void ViperContext::DispatchRawParam(
     uint32_t arr_size,
     signed char *arr
 ) {
-    if (param == viper::audio::kParamDriverSession0Active) {
-        if (viper::audio::IsSession0(session_id_) && (val1 == 0 || val1 == 1)) {
-            session0_active_ = val1 == 1;
-            session0_cache_generation_ =
-                viper::audio::Session0StateCache::Instance().StoreActive(
-                    session0_active_);
-        }
-        return;
-    }
-
-    const uint64_t previous_iem_revision = iem_context_.StateRevision();
-    if (iem_context_.DispatchRawParam(param, val1, val2, val3)) {
-        if (viper::audio::IsSession0(session_id_)
-            && iem_context_.StateRevision() != previous_iem_revision) {
-            session0_cache_generation_ =
-                viper::audio::Session0StateCache::Instance().StoreIem(
-                    iem_context_.Params(),
-                    iem_context_.ResourceGeneration()
-                );
-        }
-        return;
-    }
+    if (iem_context_.DispatchRawParam(param, val1, val2, val3)) return;
     const viper::RawParamUpdate parameter_result = viper::UpdateParameterSnapshot(
         parameter_snapshot_, param, val1, val2, val3, arr_size, arr
     );
-    const viper::audio::ResourceCaptureResult resource_result =
-        resources_.CaptureRaw(param, val1, val2, val3, arr_size, arr);
-    if (viper::audio::IsSession0(session_id_)
-        && (resource_result == viper::audio::ResourceCaptureResult::COMMITTED
-            || resource_result == viper::audio::ResourceCaptureResult::CLEARED)) {
-        session0_cache_generation_ =
-            viper::audio::Session0StateCache::Instance().StoreResources(
-                resources_.CommittedSnapshot());
-    }
+    resources_.CaptureRaw(param, val1, val2, val3, arr_size, arr);
     if (parameter_result == viper::RawParamUpdate::UPDATED) {
         parameter_mailbox_.Publish(parameter_snapshot_);
-        if (viper::audio::IsSession0(session_id_)) {
-            session0_cache_generation_ =
-                viper::audio::Session0StateCache::Instance().StoreParams(
-                    parameter_snapshot_);
-        }
         return;
     }
 
@@ -686,8 +632,7 @@ int32_t ViperContext::Process(audio_buffer_t *in_buffer, audio_buffer_t *out_buf
         return -EINVAL;
     }
 
-    if (!enable_ || viper::audio::ShouldBypassSession0(
-            session_id_, session0_active_)) {
+    if (!enable_) {
         return -ENODATA;
     }
 
