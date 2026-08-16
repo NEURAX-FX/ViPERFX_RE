@@ -56,7 +56,7 @@ bool TestSnapshotAndWireMapping() {
 
     const viper::IemTelemetryWire wire = viper::MakeIemTelemetryWire(snapshot);
     static_assert(sizeof(viper::TelemetryWire) == 320);
-    static_assert(sizeof(viper::IemTelemetryWire) == 200);
+    static_assert(sizeof(viper::IemTelemetryWire) == 168);
     return Check(wire.version == viper::kIemTelemetryVersion, "map wire version")
         && Check(wire.wire_size == sizeof(wire), "map wire size")
         && Check(wire.processed_frames == snapshot.processed_frames, "map processed frames")

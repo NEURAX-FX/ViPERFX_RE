@@ -4,7 +4,6 @@
 #include "log.h"
 #include "viper/constants.h"
 #include <cerrno>
-#include <atomic>
 #include <chrono>
 #include <cstring>
 
@@ -21,9 +20,6 @@ constexpr int32_t kParamGetArchitecture = 8;
 constexpr int32_t kParamGetTelemetry = 9;
 constexpr int32_t kParamGetIemTelemetry = 10;
 
-std::atomic<uint64_t> g_next_context_instance_id{1};
-std::atomic<uint32_t> g_live_session0_contexts{0};
-
 ViperContext::ViperContext(int32_t session_id, int32_t io_id) :
     config_({}),
     disable_reason_(DisableReason::NONE),
@@ -34,12 +30,7 @@ ViperContext::ViperContext(int32_t session_id, int32_t io_id) :
     enable_(false),
     session_id_(session_id),
     io_id_(io_id),
-    context_instance_id_(g_next_context_instance_id.fetch_add(
-        1, std::memory_order_relaxed)),
     has_processed_(false) {
-    if (viper::audio::IsSession0(session_id_)) {
-        g_live_session0_contexts.fetch_add(1, std::memory_order_relaxed);
-    }
     if (viper::audio::IsSession0(session_id_)) {
         const auto cached = viper::audio::Session0StateCache::Instance().Load();
         if (cached.initialized) {
@@ -59,12 +50,6 @@ ViperContext::ViperContext(int32_t session_id, int32_t io_id) :
         io_id_,
         static_cast<unsigned long long>(session0_cache_generation_)
     );
-}
-
-ViperContext::~ViperContext() {
-    if (viper::audio::IsSession0(session_id_)) {
-        g_live_session0_contexts.fetch_sub(1, std::memory_order_relaxed);
-    }
 }
 
 void ViperContext::CopyBufferConfig(buffer_config_t *dest, buffer_config_t *src) {
@@ -510,16 +495,7 @@ int32_t ViperContext::HandleGetParam(
 
             iem::IemTelemetrySnapshot snapshot{};
             if (!iem_context_.ReadTelemetry(snapshot)) return -ENODATA;
-            viper::IemTelemetryWire wire = viper::MakeIemTelemetryWire(snapshot);
-            wire.audio_session_id = session_id_;
-            wire.session0_active =
-                viper::audio::IsSession0(session_id_) && session0_active_ ? 1U : 0U;
-            wire.session0_cache_generation = viper::audio::IsSession0(session_id_)
-                ? session0_cache_generation_ : 0U;
-            wire.context_instance_id = context_instance_id_;
-            wire.session0_live_context_count = viper::audio::IsSession0(session_id_)
-                ? g_live_session0_contexts.load(std::memory_order_relaxed) : 0U;
-            wire.reserved_session0 = 0U;
+            const viper::IemTelemetryWire wire = viper::MakeIemTelemetryWire(snapshot);
             reply_param->status = 0;
             reply_param->vsize = sizeof(wire);
             memcpy(reply_param->data + offset, &wire, sizeof(wire));

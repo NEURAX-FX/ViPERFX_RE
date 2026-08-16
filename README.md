@@ -43,8 +43,6 @@ If your see any process related to audio HAL with "aidl" in the name, you need t
 
 The legacy non-AIDL path includes the IEM spatial engine with Stereo, Multi, Granular, and Halo 7.1 encoders. Render modes are Off, Halo Downmix, and KU100; KU100 remains the default.
 
-In legacy global mode, the module pins `v4a_standard_re` to the music output session. The App configures the session 0 context but no longer owns its lifetime: validated scalar/IEM state and committed DDC/convolver resources remain cached inside `audioserver`, so global processing can continue after the App process is killed. Dynamic nonzero sessions still depend on the App, and an `audioserver` restart clears the in-memory cache until the App replays saved state.
-
 Halo is a project-local clean-room reconstruction from the HaloMixRE reverse-engineering notes. Its internal bed contains seven directional planes plus a non-directional LFE sideband; LFE never enters ACN/SN3D rotation and is latency-aligned before stereo mixing. It is not an IEM Plug-in Suite component, and the original Halo binary and VST3 are not shipped. See [docs/iem-upstream-attribution.md](docs/iem-upstream-attribution.md) for parameter IDs, the pinned `dialog.net` hash, and IEM/KU100 attribution.
 
 Halo Downmix replaces the former direct Simple decoder. It reconstructs a logical 7.1 bed, applies the clean-room Halo balance/divergence, delay, shelf, M/S trim, LFE low-pass, and output high-pass stages, then uses the confirmed sparse stereo route. The decoder has a fixed 3,072-sample base latency at the internal 96 kHz rate. The unresolved FFT Monofilter and arbitrary host-layout negotiation are intentionally not included.

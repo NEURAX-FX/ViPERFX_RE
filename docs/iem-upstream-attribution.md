@@ -85,16 +85,3 @@ Render mode `1` is a fixed-layout clean-room reconstruction of the relevant Halo
 7. Optional Q=1 output high-pass and left/right output trims.
 
 The FFT Monofilter, Monitor In path, arbitrary layout table, solo/mute bank, phase inversion, metering, and plugin preset compatibility are not part of the project renderer.
-
-## Session 0 Driver Ownership
-
-Legacy global mode uses an AudioPolicy-pinned `v4a_standard_re` music effect. The manager's session 0 `AudioEffect` is a configuration handle rather than the sole lifetime owner.
-
-- Context-local control parameter: `0x120F0` (`0 = bypass`, `1 = active`).
-- Activation order: bypass, dispatch complete state/resources, then activate.
-- Dynamic mode explicitly bypasses the pinned global path before opening nonzero sessions.
-- The App releasing or losing its Binder handle does not deactivate the policy-owned context.
-- Validated ViPER/IEM snapshots and immutable committed DDC/convolver resources are cached only for session 0.
-- The cache is memory-only and is lost when `audioserver` restarts.
-- Boot/sticky App replay remains responsible for recovery after reboot or `audioserver` restart.
-- AIDL mode keeps the pinned legacy path bypassed and retains its existing App-owned lifetime behavior.

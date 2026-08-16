@@ -24,7 +24,6 @@ public:
     };
 
     ViperContext(int32_t session_id, int32_t io_id);
-    ~ViperContext();
 
     int32_t HandleCommand(
         uint32_t cmd_code,
@@ -52,7 +51,6 @@ private:
     int32_t io_id_ = -1;
     bool session0_active_ = false;
     uint64_t session0_cache_generation_ = 0;
-    uint64_t context_instance_id_ = 0;
     viper::audio::DspGraphSlots graph_slots_;
     viper::audio::DspResources resources_;
     viper::audio::ParameterMailbox parameter_mailbox_;
