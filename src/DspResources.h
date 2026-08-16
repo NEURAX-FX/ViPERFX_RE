@@ -4,7 +4,6 @@
 #include "ViPERParams.h"
 #include <cstddef>
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 namespace viper::audio {
@@ -18,17 +17,6 @@ enum class ResourceCaptureResult {
     CLEARED,
     INVALID,
 };
-
-struct CommittedDspResourceSnapshot final {
-    std::vector<float> convolver_kernel;
-    uint32_t convolver_channels = 0;
-    int convolver_kernel_id = 0;
-    std::vector<viper::BiquadSection> ddc_44100;
-    std::vector<viper::BiquadSection> ddc_48000;
-};
-
-using CommittedDspResourcePtr =
-    std::shared_ptr<const CommittedDspResourceSnapshot>;
 
 class DspResources final {
 public:
@@ -44,15 +32,18 @@ public:
     bool ApplyTo(DspGraph &graph) const;
     bool HasConvolverKernel() const noexcept;
     bool HasDdcCoefficients() const noexcept;
-    CommittedDspResourcePtr CommittedSnapshot() const noexcept;
-    void RestoreCommittedSnapshot(CommittedDspResourcePtr snapshot) noexcept;
 
 private:
     std::vector<float> pending_convolver_;
     size_t pending_convolver_size_ = 0;
     uint32_t pending_convolver_channels_ = 0;
 
-    CommittedDspResourcePtr committed_{};
+    std::vector<float> convolver_kernel_;
+    uint32_t convolver_channels_ = 0;
+    int convolver_kernel_id_ = 0;
+
+    std::vector<viper::BiquadSection> ddc_44100_;
+    std::vector<viper::BiquadSection> ddc_48000_;
 };
 
 } // namespace viper::audio
