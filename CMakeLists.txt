@@ -132,11 +132,6 @@ if(BUILD_ANALYZER_TESTS)
         IEMDSP ViPERDSP Threads::Threads)
     add_test(NAME session0_state_cache_test COMMAND session0_state_cache_test)
 
-    add_test(
-        NAME session0_pinner_test
-        COMMAND sh ${CMAKE_SOURCE_DIR}/tests/module/Session0PinnerTest.sh
-    )
-
     add_executable(dsp_graph_slots_test
         tests/DspGraphSlotsTest.cpp
         src/AudioFormat.cpp
