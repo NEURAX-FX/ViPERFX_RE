@@ -195,7 +195,7 @@ void HaloDialogExtractor::ProcessFrame(
             out.centre_im[bin] = (0.5F / kCentreScale) * gain * mid_im;
         }
     } else {
-        std::memset(&out, 0, sizeof(out));
+        out = {};
     }
 
     std::copy(left_re, left_re + HaloStft::kBins, left_history_re_);
