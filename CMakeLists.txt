@@ -37,6 +37,17 @@ target_include_directories(viper_daemon_protocol PUBLIC
     tools
 )
 
+add_library(viper_daemon_store STATIC
+    daemon/SnapshotStore.cpp
+    daemon/GenerationArbiter.cpp
+)
+target_compile_features(viper_daemon_store PUBLIC cxx_std_20)
+target_include_directories(viper_daemon_store PUBLIC
+    daemon
+    protocol
+)
+target_link_libraries(viper_daemon_store PUBLIC viper_daemon_protocol)
+
 if(BUILD_ANALYZER_TESTS)
     enable_testing()
 
@@ -332,6 +343,18 @@ if(BUILD_ANALYZER_TESTS)
     target_compile_features(snapshot_schema_test PRIVATE cxx_std_20)
     target_compile_options(snapshot_schema_test PRIVATE -UNDEBUG)
     add_test(NAME snapshot_schema_test COMMAND snapshot_schema_test)
+
+    add_executable(snapshot_store_test tests/SnapshotStoreTest.cpp)
+    target_link_libraries(snapshot_store_test PRIVATE viper_daemon_store)
+    target_compile_features(snapshot_store_test PRIVATE cxx_std_20)
+    target_compile_options(snapshot_store_test PRIVATE -UNDEBUG)
+    add_test(NAME snapshot_store_test COMMAND snapshot_store_test)
+
+    add_executable(generation_arbiter_test tests/GenerationArbiterTest.cpp)
+    target_link_libraries(generation_arbiter_test PRIVATE viper_daemon_store)
+    target_compile_features(generation_arbiter_test PRIVATE cxx_std_20)
+    target_compile_options(generation_arbiter_test PRIVATE -UNDEBUG)
+    add_test(NAME generation_arbiter_test COMMAND generation_arbiter_test)
 endif()
 
 add_library(v4a_re SHARED
