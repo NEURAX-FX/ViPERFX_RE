@@ -25,6 +25,18 @@ target_link_libraries(pffft_core PUBLIC m)
 add_subdirectory(IEMDSP)
 add_subdirectory(ViPERDSP)
 
+add_library(viper_daemon_protocol STATIC
+    protocol/ViperDaemonProtocol.cpp
+    protocol/DeviceKey.cpp
+    protocol/SnapshotSchema.cpp
+    tools/Sha256.cpp
+)
+target_compile_features(viper_daemon_protocol PUBLIC cxx_std_20)
+target_include_directories(viper_daemon_protocol PUBLIC
+    protocol
+    tools
+)
+
 if(BUILD_ANALYZER_TESTS)
     enable_testing()
 
@@ -302,6 +314,24 @@ if(BUILD_ANALYZER_TESTS)
     target_include_directories(iem_telemetry_test PRIVATE src ViPERDSP)
     target_link_libraries(iem_telemetry_test PRIVATE IEMDSP Threads::Threads)
     add_test(NAME iem_telemetry_test COMMAND iem_telemetry_test)
+
+    add_executable(viper_daemon_protocol_test tests/ViperDaemonProtocolTest.cpp)
+    target_link_libraries(viper_daemon_protocol_test PRIVATE viper_daemon_protocol)
+    target_compile_features(viper_daemon_protocol_test PRIVATE cxx_std_20)
+    target_compile_options(viper_daemon_protocol_test PRIVATE -UNDEBUG)
+    add_test(NAME viper_daemon_protocol_test COMMAND viper_daemon_protocol_test)
+
+    add_executable(device_key_test tests/DeviceKeyTest.cpp)
+    target_link_libraries(device_key_test PRIVATE viper_daemon_protocol)
+    target_compile_features(device_key_test PRIVATE cxx_std_20)
+    target_compile_options(device_key_test PRIVATE -UNDEBUG)
+    add_test(NAME device_key_test COMMAND device_key_test)
+
+    add_executable(snapshot_schema_test tests/SnapshotSchemaTest.cpp)
+    target_link_libraries(snapshot_schema_test PRIVATE viper_daemon_protocol)
+    target_compile_features(snapshot_schema_test PRIVATE cxx_std_20)
+    target_compile_options(snapshot_schema_test PRIVATE -UNDEBUG)
+    add_test(NAME snapshot_schema_test COMMAND snapshot_schema_test)
 endif()
 
 add_library(v4a_re SHARED
