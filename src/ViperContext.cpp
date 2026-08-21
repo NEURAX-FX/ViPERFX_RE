@@ -475,12 +475,18 @@ void ViperContext::HandleSetConfig(effect_config_t *new_config) {
     );
     buffer_frame_count_ = viper::audio::kMaxBlockFrames;
 
-    // ViPER
+    // AudioFlinger may issue SET_CONFIG again before the audio thread consumes a
+    // previously prepared graph (route/rate transitions do this on some output
+    // threads). PreparePending() intentionally rejects a second pending graph, so
+    // retract the superseded one on this control thread before staging the newest
+    // configuration. Otherwise a valid repeated configuration leaves
+    // disable_reason_ at UNKNOWN and exposes configure=0 to the caller.
     const viper::audio::DspGraphConfig graph_config{
         config_.input_cfg.sampling_rate,
         viper::audio::kMaxBlockFrames,
         graph_generation_ + 1,
     };
+    graph_slots_.RetractPending();
     const bool prepared = graph_slots_.Active() == nullptr
         ? graph_slots_.PrepareInitial(graph_config, parameter_snapshot_, resources_)
         : graph_slots_.PreparePending(graph_config, parameter_snapshot_, resources_);

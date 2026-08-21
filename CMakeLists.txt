@@ -510,6 +510,32 @@ if(BUILD_ANALYZER_TESTS)
     target_compile_options(viper_context_snapshot_test PRIVATE -UNDEBUG)
     add_test(NAME viper_context_snapshot_test COMMAND viper_context_snapshot_test)
 
+    add_executable(viper_context_configure_test
+        tests/ViperContextConfigureTest.cpp
+        src/AudioFormat.cpp
+        src/DriverDaemonBridge.cpp
+        src/DriverEventPublisher.cpp
+        src/DspGraph.cpp
+        src/DspGraphSlots.cpp
+        src/DspResources.cpp
+        src/GraphCrossfade.cpp
+        src/IemContext.cpp
+        src/IemGraph.cpp
+        src/IemGraphSlots.cpp
+        src/IemParameterMailbox.cpp
+        src/IemResources.cpp
+        src/ParameterMailbox.cpp
+        src/SnapshotApplyController.cpp
+        src/ViperContext.cpp
+    )
+    target_include_directories(viper_context_configure_test PRIVATE
+        src src/include ViPERDSP ViPERDSP/include)
+    target_link_libraries(viper_context_configure_test
+        PRIVATE viper_daemon_protocol IEMDSP ViPERDSP Threads::Threads m)
+    target_compile_features(viper_context_configure_test PRIVATE cxx_std_20)
+    target_compile_options(viper_context_configure_test PRIVATE -UNDEBUG)
+    add_test(NAME viper_context_configure_test COMMAND viper_context_configure_test)
+
     add_executable(snapshot_ack_e2e_test
         tests/SnapshotAckEndToEndTest.cpp
         src/AudioFormat.cpp
