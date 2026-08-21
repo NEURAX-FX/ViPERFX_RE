@@ -3,6 +3,10 @@
 #include "log.h"
 #include "viper/constants.h"
 
+// memcmp is used below. It reached this translation unit only transitively on
+// some toolchains, so the host build failed with "'memcmp' was not declared".
+#include <cstring>
+
 extern "C" {
 struct ViperHandle {
     const effect_interface_s *interface; // Always keep as first member
@@ -69,6 +73,10 @@ static int32_t ViperLibraryCreate(
     auto *viper_handle = new ViperHandle();
     viper_handle->interface = &kViperInterface;
     viper_handle->context = new ViperContext();
+    // Observe-only daemon registration; runs on the AudioFlinger create path.
+    viper_handle->context->AttachDaemonBridge(
+        static_cast<uint32_t>(session_id), static_cast<uint32_t>(io_id)
+    );
     *handle = reinterpret_cast<effect_handle_t>(viper_handle);
     VIPER_LOGI(
         "ViperLibraryCreate: session_id=%d, io_id=%d, context=%p",

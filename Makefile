@@ -56,9 +56,25 @@ $(ABIS):
 	cmake --build $(BUILD_DIR)/$@ -- -j$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 	@mkdir -p $(OUT_DIR)
 	cp $(BUILD_DIR)/$@/libv4a_re.so $(OUT_DIR)/libv4a_re_$@.so
+	cp $(BUILD_DIR)/$@/viper-daemon $(OUT_DIR)/viper-daemon_$@
+
+# Owner dex. Built with the host JDK + D8 against an Android API jar, so the
+# paths come from the environment rather than the NDK. Missing tooling is not a
+# hard error: the module still installs and the daemon reports owner_state=absent
+# while the App's legacy backend keeps working.
+OWNER_DEX      := $(OUT_DIR)/owner/viper-owner.dex
+
+.PHONY: owner
+owner:
+	@if [ -n "$(ANDROID_JAR)" ] && [ -n "$(D8_JAR)" ]; then \
+		OUT_DIR=$(OUT_DIR)/owner ANDROID_JAR=$(ANDROID_JAR) D8_JAR=$(D8_JAR) \
+			bash owner/build-owner.sh; \
+	else \
+		echo "owner: ANDROID_JAR/D8_JAR unset, skipping owner dex"; \
+	fi
 
 # Prepare Magisk module directory structure
-module: libs
+module: libs owner
 	@echo "Preparing Magisk module..."
 	@rm -rf $(MODULE_OUT)
 	@mkdir -p $(MODULE_OUT)/common/files
@@ -67,6 +83,10 @@ module: libs
 	@cp $(MODULE_DIR)/customize.sh $(MODULE_OUT)/
 	@cp $(MODULE_DIR)/post-fs-data.sh $(MODULE_OUT)/
 	@cp $(MODULE_DIR)/uninstall.sh $(MODULE_OUT)/
+	@cp $(MODULE_DIR)/service.sh $(MODULE_OUT)/
+	@cp $(MODULE_DIR)/boot-completed.sh $(MODULE_OUT)/
+	@cp $(MODULE_DIR)/daemon-start.sh $(MODULE_OUT)/
+	@cp -r $(MODULE_DIR)/initrc $(MODULE_OUT)/
 	@cp $(MODULE_DIR)/LICENSE $(MODULE_OUT)/
 	@cp $(MODULE_DIR)/IEM_ATTRIBUTION.md $(MODULE_OUT)/
 	@cp -r $(MODULE_DIR)/common/* $(MODULE_OUT)/common/
@@ -74,9 +94,16 @@ module: libs
 		-e 's/^version=.*/version=$(VERSION_NAME)/' \
 		-e 's/^versionCode=.*/versionCode=$(VERSION_CODE)/' \
 		$(MODULE_OUT)/module.prop && rm -f $(MODULE_OUT)/module.prop.bak
+	@mkdir -p $(MODULE_OUT)/common/bin
 	@for abi in $(ABIS); do \
 		cp $(OUT_DIR)/libv4a_re_$$abi.so $(MODULE_OUT)/common/files/; \
+		cp $(OUT_DIR)/viper-daemon_$$abi $(MODULE_OUT)/common/bin/viper-daemon_$$abi; \
 	done
+	@if [ -f $(OWNER_DEX) ]; then \
+		cp $(OWNER_DEX) $(MODULE_OUT)/common/bin/viper-owner.dex; \
+	else \
+		echo "module: owner dex absent; package installs without the effect owner"; \
+	fi
 
 # Create flashable zip
 zip: module

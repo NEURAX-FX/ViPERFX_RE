@@ -1,11 +1,13 @@
 #include "ViperContext.h"
 #include "AudioFormat.h"
+#include "DriverEventPublisher.h"
 #include "TelemetryProtocol.h"
 #include "log.h"
 #include "viper/constants.h"
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <utility>
 
 #define SET(type, ptr, value) (*(type *) (ptr) = (value))
 
@@ -28,8 +30,294 @@ ViperContext::ViperContext() :
     previous_buffer_(std::vector<float>()),
     buffer_frame_count_(0),
     enable_(false),
+    snapshot_apply_([this](
+                        const viper::audio::SnapshotApplyController::CommitRequest &request,
+                        uint64_t *resource_generation,
+                        uint64_t *graph_generation,
+                        std::string *error
+                    ) {
+        return CommitDaemonSnapshot(request, resource_generation, graph_generation, error);
+    }),
     has_processed_(false) {
     VIPER_LOGI("ViperContext created");
+}
+
+ViperContext::~ViperContext() {
+    if (daemon_context_instance_id_ != 0) {
+        viper::audio::DriverEventPublisher::Instance().UnregisterContext(
+            daemon_context_instance_id_);
+        daemon_context_instance_id_ = 0;
+    }
+}
+
+void ViperContext::AttachDaemonBridge(uint32_t audio_session_id, uint32_t io_id) {
+    if (daemon_context_instance_id_ != 0) return;
+    daemon_context_instance_id_ =
+        viper::audio::DriverEventPublisher::Instance().RegisterContext(
+            audio_session_id,
+            io_id,
+            [this](
+                viper::daemon::SnapshotCommandType type,
+                std::span<const uint8_t> payload
+            ) { return HandleSnapshotCommand(type, payload); }
+        );
+}
+
+void ViperContext::PublishDaemonGenerations() {
+    if (daemon_context_instance_id_ == 0) return;
+    viper::audio::DriverEventPublisher::Instance().PublishGenerations(
+        daemon_context_instance_id_,
+        iem_context_.ResourceGeneration(),
+        graph_generation_
+    );
+}
+
+void ViperContext::PublishDaemonTelemetry() {
+    if (daemon_context_instance_id_ == 0) return;
+    viper::audio::DriverEventPublisher::Instance().PublishTelemetry(
+        daemon_context_instance_id_,
+        static_cast<uint32_t>(disable_reason_)
+    );
+}
+
+void ViperContext::SetDaemonRoute(std::string device_key_hash) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    snapshot_apply_.SetDeviceKeyHash(std::move(device_key_hash));
+}
+
+bool ViperContext::BeginSnapshot(
+    const viper::audio::SnapshotMetadata &metadata,
+    viper::audio::ApplyError *error
+) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    return snapshot_apply_.Begin(metadata, error);
+}
+
+bool ViperContext::AppendSnapshot(
+    uint32_t offset,
+    std::span<const uint8_t> chunk,
+    viper::audio::ApplyError *error
+) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    return snapshot_apply_.Append(offset, chunk, error);
+}
+
+bool ViperContext::CommitSnapshot(
+    viper::audio::ApplyResult *result,
+    viper::audio::ApplyError *error,
+    std::string *message
+) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    // Commit() calls CommitDaemonSnapshot() synchronously, so the lock covers the
+    // whole parameter/resource/graph mutation.
+    const bool applied = snapshot_apply_.Commit(result, error, message);
+    // Either way the daemon's view of this context changed: a successful apply
+    // moves the generations, a failure may have latched a bypass reason.
+    PublishDaemonGenerations();
+    PublishDaemonTelemetry();
+    return applied;
+}
+
+void ViperContext::AbortSnapshot(viper::audio::ApplyError reason) {
+    std::lock_guard<std::mutex> lock(control_mutex_);
+    snapshot_apply_.Abort(reason);
+}
+
+viper::daemon::DriverDaemonBridge::SnapshotAck ViperContext::HandleSnapshotCommand(
+    viper::daemon::SnapshotCommandType type,
+    std::span<const uint8_t> payload
+) {
+    using viper::audio::ApplyError;
+    using viper::daemon::SnapshotCommandType;
+
+    viper::daemon::DriverDaemonBridge::SnapshotAck ack{};
+    std::string decode_error;
+
+    switch (type) {
+        case SnapshotCommandType::ROUTE_ANNOUNCE: {
+            viper::daemon::RouteAnnounce announce{};
+            if (!viper::daemon::DecodeRouteAnnounce(payload, &announce, &decode_error)) {
+                ack.error_code = static_cast<uint32_t>(ApplyError::BAD_METADATA);
+                return ack;
+            }
+            // The daemon owns route identity; the driver only sees an effect
+            // instance. Adopting it here is what lets the mismatch check below
+            // compare against something real instead of an empty hash.
+            SetDaemonRoute(announce.device_key_hash);
+            ack.accepted = true;
+            return ack;
+        }
+        case SnapshotCommandType::SNAPSHOT_BEGIN: {
+            viper::daemon::SnapshotBegin begin{};
+            if (!viper::daemon::DecodeSnapshotBegin(payload, &begin, &decode_error)) {
+                ack.error_code = static_cast<uint32_t>(ApplyError::BAD_METADATA);
+                return ack;
+            }
+            viper::audio::SnapshotMetadata metadata{};
+            metadata.app_generation = begin.app_generation;
+            metadata.daemon_generation = begin.daemon_generation;
+            metadata.device_key_hash = begin.device_key_hash;
+            metadata.total_size = begin.total_size;
+            metadata.crc32 = begin.crc32;
+
+            ApplyError error = ApplyError::NONE;
+            ack.accepted = BeginSnapshot(metadata, &error);
+            ack.error_code = static_cast<uint32_t>(error);
+            ack.app_generation = begin.app_generation;
+            ack.daemon_generation = begin.daemon_generation;
+            return ack;
+        }
+        case SnapshotCommandType::SNAPSHOT_CHUNK: {
+            viper::daemon::SnapshotChunk chunk{};
+            if (!viper::daemon::DecodeSnapshotChunk(payload, &chunk, &decode_error)) {
+                // A malformed chunk cannot be reconciled with the staged prefix, so
+                // drop the whole transfer rather than staging a hole.
+                AbortSnapshot(ApplyError::CHUNK_RANGE);
+                ack.error_code = static_cast<uint32_t>(ApplyError::CHUNK_RANGE);
+                return ack;
+            }
+            ApplyError error = ApplyError::NONE;
+            ack.accepted = AppendSnapshot(chunk.offset, chunk.data, &error);
+            ack.error_code = static_cast<uint32_t>(error);
+            return ack;
+        }
+        case SnapshotCommandType::SNAPSHOT_COMMIT: {
+            viper::daemon::SnapshotCommit commit{};
+            if (!viper::daemon::DecodeSnapshotCommit(payload, &commit, &decode_error)) {
+                AbortSnapshot(ApplyError::BAD_METADATA);
+                ack.error_code = static_cast<uint32_t>(ApplyError::BAD_METADATA);
+                return ack;
+            }
+            viper::audio::ApplyResult result{};
+            ApplyError error = ApplyError::NONE;
+            std::string message;
+            ack.accepted = CommitSnapshot(&result, &error, &message);
+            ack.error_code = static_cast<uint32_t>(error);
+            if (ack.accepted) {
+                ack.app_generation = result.app_generation;
+                ack.daemon_generation = result.daemon_generation;
+                ack.resource_generation = result.resource_generation;
+                ack.graph_generation = result.graph_generation;
+            } else {
+                // Echo what the daemon asked for so it can correlate the failure.
+                ack.app_generation = commit.app_generation;
+                ack.daemon_generation = commit.daemon_generation;
+                VIPER_LOGE("Snapshot commit rejected: %s", message.c_str());
+            }
+            return ack;
+        }
+        case SnapshotCommandType::SNAPSHOT_ABORT: {
+            viper::daemon::SnapshotAbort abort{};
+            // An undecodable abort still means "stop staging".
+            viper::daemon::DecodeSnapshotAbort(payload, &abort, &decode_error);
+            AbortSnapshot(ApplyError::ABORTED);
+            // Acknowledged: the driver did what was asked.
+            ack.accepted = true;
+            ack.error_code = static_cast<uint32_t>(ApplyError::ABORTED);
+            return ack;
+        }
+    }
+
+    ack.error_code = static_cast<uint32_t>(ApplyError::BAD_METADATA);
+    return ack;
+}
+
+bool ViperContext::CommitDaemonSnapshot(
+    const viper::audio::SnapshotApplyController::CommitRequest &request,
+    uint64_t *resource_generation,
+    uint64_t *graph_generation,
+    std::string *error
+) {
+    if (disable_reason_ != DisableReason::NONE) {
+        if (error != nullptr) *error = "driver is bypassed: " + disable_reason_message_;
+        return false;
+    }
+    if (graph_slots_.Active() == nullptr) {
+        // EFFECT_CMD_SET_CONFIG has not run yet, so there is no graph geometry to
+        // prepare against. The daemon must retry after configuration.
+        if (error != nullptr) *error = "driver is not configured yet";
+        return false;
+    }
+
+    // Replay onto scratch copies first: a rejected record must not leave the
+    // live parameter snapshot or resources half-updated.
+    viper::ViPERParams staged_params = parameter_snapshot_;
+    viper::audio::DspResources staged_resources = resources_;
+    for (const auto &record : request.parameters) {
+        // Non-const because DispatchRawParam's array parameter is non-const; the
+        // driver never writes through it.
+        auto *array = record.payload.empty()
+            ? nullptr
+            : reinterpret_cast<signed char *>(
+                  const_cast<uint8_t *>(record.payload.data()));
+        const viper::RawParamUpdate update = viper::UpdateParameterSnapshot(
+            staged_params,
+            record.param,
+            record.val1,
+            record.val2,
+            record.val3,
+            record.arr_size,
+            array
+        );
+        if (update == viper::RawParamUpdate::INVALID) {
+            if (error != nullptr) {
+                *error = "snapshot parameter rejected: "
+                    + std::to_string(record.param);
+            }
+            return false;
+        }
+        if (staged_resources.CaptureRaw(
+                record.param, record.val1, record.val2, record.val3, record.arr_size, array
+            )
+            == viper::audio::ResourceCaptureResult::INVALID) {
+            if (error != nullptr) {
+                *error = "snapshot resource rejected: " + std::to_string(record.param);
+            }
+            return false;
+        }
+    }
+
+    // Prepare the replacement graph before touching anything the audio thread
+    // reads. A failure here leaves the active graph running.
+    //
+    // A pending graph from an earlier apply may still be staged when no audio has
+    // flowed yet (Process() is what consumes it). That graph is superseded, so
+    // drop it instead of failing: otherwise a route restore followed by an App
+    // sync would deadlock the apply path before playback starts.
+    graph_slots_.RetractPending();
+    const viper::audio::DspGraphConfig graph_config{
+        config_.input_cfg.sampling_rate,
+        viper::audio::kMaxBlockFrames,
+        graph_generation_ + 1,
+    };
+    if (!graph_slots_.PreparePending(graph_config, staged_params, staged_resources)) {
+        if (error != nullptr) *error = "failed to prepare snapshot DSP graph";
+        return false;
+    }
+
+    // Commit point: the pending graph is ready, so adopt the staged state.
+    parameter_snapshot_ = staged_params;
+    resources_ = std::move(staged_resources);
+    graph_generation_ = graph_config.generation;
+    // Publish so the swapped-in graph and any surviving previous graph converge
+    // on the same parameters.
+    parameter_mailbox_.Publish(parameter_snapshot_);
+
+    // IEM parameters are dispatched separately; IemContext owns its own graph
+    // slots and stays bypassed on failure rather than taking the ViPER path down.
+    for (const auto &record : request.iem_parameters) {
+        iem_context_.DispatchRawParam(
+            record.param, record.val1, record.val2, record.val3);
+    }
+
+    enable_ = request.snapshot.master_enabled;
+
+    if (resource_generation != nullptr) {
+        *resource_generation = iem_context_.ResourceGeneration();
+    }
+    if (graph_generation != nullptr) *graph_generation = graph_generation_;
+    if (error != nullptr) error->clear();
+    return true;
 }
 
 void ViperContext::CopyBufferConfig(buffer_config_t *dest, buffer_config_t *src) {
@@ -283,20 +571,24 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
 
     const int param = *reinterpret_cast<int *>(cmd_param->data);
     const int *int_values = reinterpret_cast<int *>(cmd_param->data + offset);
+    int32_t status = -EINVAL;
     switch (cmd_param->vsize) {
         case sizeof(int): {
             DispatchRawParam(param, int_values[0], 0, 0, 0, nullptr);
-            return 0;
+            status = 0;
+            break;
         }
         case sizeof(int) * 2: {
             DispatchRawParam(param, int_values[0], int_values[1], 0, 0, nullptr);
-            return 0;
+            status = 0;
+            break;
         }
         case sizeof(int) * 3: {
             DispatchRawParam(
                 param, int_values[0], int_values[1], int_values[2], 0, nullptr
             );
-            return 0;
+            status = 0;
+            break;
         }
         case 256:
         case 1024: {
@@ -306,7 +598,8 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
                 cmd_param->data + offset + sizeof(uint32_t)
             );
             DispatchRawParam(param, 0, 0, 0, arr_size, arr);
-            return 0;
+            status = 0;
+            break;
         }
         case 8192: {
             const int value1 = *reinterpret_cast<int *>(cmd_param->data + offset);
@@ -316,12 +609,17 @@ int32_t ViperContext::HandleSetParam(effect_param_t *cmd_param, void *reply_data
                 cmd_param->data + offset + sizeof(int) + sizeof(uint32_t)
             );
             DispatchRawParam(param, value1, 0, 0, arr_size, arr);
-            return 0;
+            status = 0;
+            break;
         }
-        default: {
+        default:
             return -EINVAL;
-        }
     }
+
+    // Resource commits and IEM resource resets change generations observed by the
+    // daemon. PublishGenerations() suppresses unchanged values.
+    PublishDaemonGenerations();
+    return status;
 }
 
 int32_t ViperContext::HandleGetParam(
@@ -461,6 +759,10 @@ int32_t ViperContext::HandleCommand(
     uint32_t *reply_size,
     void *reply_data
 ) {
+    // The daemon bridge thread mutates the same parameters, resources and graph
+    // slots through the snapshot apply path, so command handling serializes with
+    // it. Process() never takes this lock.
+    std::lock_guard<std::mutex> lock(control_mutex_);
     const uint32_t rs = reply_size == nullptr ? 0 : *reply_size;
     switch (cmd_code) {
         case EFFECT_CMD_INIT: {
@@ -494,6 +796,17 @@ int32_t ViperContext::HandleCommand(
                 return -EINVAL;
             }
             HandleSetConfig(static_cast<effect_config_t *>(cmd_data));
+            if (daemon_context_instance_id_ != 0) {
+                viper::audio::DriverEventPublisher::Instance().PublishConfigured(
+                    daemon_context_instance_id_,
+                    static_cast<uint32_t>(config_.input_cfg.sampling_rate),
+                    static_cast<uint32_t>(config_.input_cfg.channels)
+                );
+            }
+            // HandleSetConfig() rebuilds the graphs, so both the generation pair and
+            // any new bypass reason are observable here.
+            PublishDaemonGenerations();
+            PublishDaemonTelemetry();
             SET(int32_t, reply_data, 0);
             return 0;
         }
@@ -537,6 +850,11 @@ int32_t ViperContext::HandleCommand(
             }
             has_processed_ = false;
             enable_ = true;
+            if (daemon_context_instance_id_ != 0) {
+                viper::audio::DriverEventPublisher::Instance().PublishEnabled(
+                    daemon_context_instance_id_, true);
+            }
+            PublishDaemonTelemetry();
             SET(int32_t, reply_data, 0);
             return 0;
         }
@@ -554,6 +872,11 @@ int32_t ViperContext::HandleCommand(
             }
             analyzer_.Reset();
             enable_ = false;
+            if (daemon_context_instance_id_ != 0) {
+                viper::audio::DriverEventPublisher::Instance().PublishEnabled(
+                    daemon_context_instance_id_, false);
+            }
+            PublishDaemonTelemetry();
             SET(int32_t, reply_data, 0);
             return 0;
         }
@@ -593,11 +916,15 @@ int32_t ViperContext::HandleCommand(
                 );
                 return -EINVAL;
             }
-            return HandleGetParam(
+            const int32_t status = HandleGetParam(
                 static_cast<effect_param_t *>(cmd_data),
                 static_cast<effect_param_t *>(reply_data),
                 reply_size
             );
+            // Process() may have latched a bypass reason on the audio thread without
+            // publishing. This control-thread poll is where the App/daemon observes it.
+            PublishDaemonTelemetry();
+            return status;
         }
         case EFFECT_CMD_GET_CONFIG: {
             if (rs != sizeof(effect_config_t) || reply_data == nullptr) {

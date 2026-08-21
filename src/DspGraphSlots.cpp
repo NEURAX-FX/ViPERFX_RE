@@ -66,6 +66,23 @@ bool DspGraphSlots::PreparePending(
     );
 }
 
+void DspGraphSlots::RetractPending() noexcept {
+    uint32_t expected = state_.load(std::memory_order_acquire);
+    for (;;) {
+        if (PendingIndex(expected) == kNone) return;
+        const uint32_t desired =
+            Pack(ActiveIndex(expected), kNone, PreviousIndex(expected));
+        if (state_.compare_exchange_weak(
+                expected,
+                desired,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire
+            )) {
+            return;
+        }
+    }
+}
+
 DspGraphSwapResult DspGraphSlots::ConsumePending() noexcept {
     uint32_t expected = state_.load(std::memory_order_acquire);
     for (;;) {

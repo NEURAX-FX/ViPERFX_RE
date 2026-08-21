@@ -26,27 +26,61 @@ add_subdirectory(IEMDSP)
 add_subdirectory(ViPERDSP)
 
 add_library(viper_daemon_protocol STATIC
+    protocol/AppCommand.cpp
+    protocol/DriverEvent.cpp
+    protocol/ParameterStream.cpp
     protocol/ViperDaemonProtocol.cpp
     protocol/DeviceKey.cpp
     protocol/SnapshotSchema.cpp
+    protocol/SnapshotCommand.cpp
+    protocol/OwnerProtocol.cpp
     tools/Sha256.cpp
 )
 target_compile_features(viper_daemon_protocol PUBLIC cxx_std_20)
 target_include_directories(viper_daemon_protocol PUBLIC
     protocol
     tools
+    ViPERDSP/include
 )
+
+find_package(Threads REQUIRED)
 
 add_library(viper_daemon_store STATIC
     daemon/SnapshotStore.cpp
     daemon/GenerationArbiter.cpp
+    daemon/SessionRegistry.cpp
+    daemon/DriverEventServer.cpp
+    daemon/OwnerServer.cpp
+    daemon/OwnerSupervisor.cpp
+    daemon/OwnerProcess.cpp
+    daemon/AppEventServer.cpp
+    daemon/RouteWatcher.cpp
+    daemon/RouteCache.cpp
+    daemon/DaemonRuntime.cpp
 )
 target_compile_features(viper_daemon_store PUBLIC cxx_std_20)
 target_include_directories(viper_daemon_store PUBLIC
     daemon
     protocol
 )
-target_link_libraries(viper_daemon_store PUBLIC viper_daemon_protocol)
+target_link_libraries(viper_daemon_store PUBLIC viper_daemon_protocol Threads::Threads)
+
+# Separate executable target: the daemon is a standalone root process and is
+# never linked into libv4a_re.so.
+add_executable(viper-daemon daemon/main.cpp)
+target_link_libraries(viper-daemon PRIVATE viper_daemon_store)
+target_compile_features(viper-daemon PRIVATE cxx_std_20)
+
+# ANDROID_ABI is only defined by the NDK toolchain file. Termux's host clang also
+# reports ANDROID, and there -static-libstdc++ resolves to a missing
+# libc++_shared, so ANDROID alone is the wrong gate.
+if(DEFINED ANDROID_ABI)
+    # init execs this binary before any app process, so it must not depend on an
+    # APK-provided libc++_shared.so.
+    target_link_options(viper-daemon PRIVATE
+        -static-libstdc++
+        -Wl,--gc-sections)
+endif()
 
 if(BUILD_ANALYZER_TESTS)
     enable_testing()
@@ -93,7 +127,6 @@ if(BUILD_ANALYZER_TESTS)
     target_link_libraries(iem_realtime_audit_test PRIVATE IEMDSP)
     add_test(NAME iem_realtime_audit_test COMMAND iem_realtime_audit_test)
 
-    find_package(Threads REQUIRED)
     add_executable(audio_analyzer_test
         tests/AudioAnalyzerTest.cpp
         ViPERDSP/viper/effects/AudioAnalyzer.cpp
@@ -332,6 +365,33 @@ if(BUILD_ANALYZER_TESTS)
     target_compile_options(viper_daemon_protocol_test PRIVATE -UNDEBUG)
     add_test(NAME viper_daemon_protocol_test COMMAND viper_daemon_protocol_test)
 
+    add_executable(owner_protocol_test tests/OwnerProtocolTest.cpp)
+    target_link_libraries(owner_protocol_test PRIVATE viper_daemon_protocol)
+    target_compile_features(owner_protocol_test PRIVATE cxx_std_20)
+    target_compile_options(owner_protocol_test PRIVATE -UNDEBUG)
+    add_test(NAME owner_protocol_test COMMAND owner_protocol_test)
+
+    # Fixture-only emitter: tests/owner/owner_wire_smoke.sh diffs its output
+    # against the ART owner's Java codec. Not a CTest case; it asserts nothing
+    # by itself.
+    add_executable(owner_wire_vectors tests/OwnerWireVectors.cpp)
+    target_link_libraries(owner_wire_vectors PRIVATE viper_daemon_protocol)
+    target_compile_features(owner_wire_vectors PRIVATE cxx_std_20)
+    target_compile_options(owner_wire_vectors PRIVATE -UNDEBUG)
+
+
+    add_executable(owner_server_test tests/OwnerServerTest.cpp)
+    target_link_libraries(owner_server_test PRIVATE viper_daemon_store)
+    target_compile_features(owner_server_test PRIVATE cxx_std_20)
+    target_compile_options(owner_server_test PRIVATE -UNDEBUG)
+    add_test(NAME owner_server_test COMMAND owner_server_test)
+
+    add_executable(owner_supervisor_test tests/OwnerSupervisorTest.cpp)
+    target_link_libraries(owner_supervisor_test PRIVATE viper_daemon_store)
+    target_compile_features(owner_supervisor_test PRIVATE cxx_std_20)
+    target_compile_options(owner_supervisor_test PRIVATE -UNDEBUG)
+    add_test(NAME owner_supervisor_test COMMAND owner_supervisor_test)
+
     add_executable(device_key_test tests/DeviceKeyTest.cpp)
     target_link_libraries(device_key_test PRIVATE viper_daemon_protocol)
     target_compile_features(device_key_test PRIVATE cxx_std_20)
@@ -355,10 +415,207 @@ if(BUILD_ANALYZER_TESTS)
     target_compile_features(generation_arbiter_test PRIVATE cxx_std_20)
     target_compile_options(generation_arbiter_test PRIVATE -UNDEBUG)
     add_test(NAME generation_arbiter_test COMMAND generation_arbiter_test)
+
+    add_executable(driver_daemon_bridge_test
+        tests/DriverDaemonBridgeTest.cpp
+        src/DriverDaemonBridge.cpp
+    )
+    target_include_directories(driver_daemon_bridge_test PRIVATE src)
+    target_link_libraries(driver_daemon_bridge_test
+        PRIVATE viper_daemon_protocol Threads::Threads)
+    target_compile_features(driver_daemon_bridge_test PRIVATE cxx_std_20)
+    target_compile_options(driver_daemon_bridge_test PRIVATE -UNDEBUG)
+    add_test(NAME driver_daemon_bridge_test COMMAND driver_daemon_bridge_test)
+
+    add_executable(driver_event_publisher_test
+        tests/DriverEventPublisherTest.cpp
+        src/DriverDaemonBridge.cpp
+        src/DriverEventPublisher.cpp
+    )
+    target_include_directories(driver_event_publisher_test PRIVATE src tests)
+    target_link_libraries(driver_event_publisher_test
+        PRIVATE viper_daemon_protocol Threads::Threads)
+    target_compile_features(driver_event_publisher_test PRIVATE cxx_std_20)
+    target_compile_options(driver_event_publisher_test PRIVATE -UNDEBUG)
+    add_test(NAME driver_event_publisher_test COMMAND driver_event_publisher_test)
+
+    add_executable(session_registry_test tests/SessionRegistryTest.cpp)
+    target_link_libraries(session_registry_test PRIVATE viper_daemon_store)
+    target_compile_features(session_registry_test PRIVATE cxx_std_20)
+    target_compile_options(session_registry_test PRIVATE -UNDEBUG)
+    add_test(NAME session_registry_test COMMAND session_registry_test)
+
+    add_executable(daemon_runtime_test tests/DaemonRuntimeTest.cpp)
+    target_link_libraries(daemon_runtime_test PRIVATE viper_daemon_store)
+    target_compile_features(daemon_runtime_test PRIVATE cxx_std_20)
+    target_compile_options(daemon_runtime_test PRIVATE -UNDEBUG)
+    add_test(NAME daemon_runtime_test COMMAND daemon_runtime_test)
+
+    add_executable(daemon_driver_e2e_test
+        tests/DaemonDriverEndToEndTest.cpp
+        src/DriverDaemonBridge.cpp
+        src/DriverEventPublisher.cpp
+    )
+    target_include_directories(daemon_driver_e2e_test PRIVATE src)
+    target_link_libraries(daemon_driver_e2e_test PRIVATE viper_daemon_store)
+    target_compile_features(daemon_driver_e2e_test PRIVATE cxx_std_20)
+    target_compile_options(daemon_driver_e2e_test PRIVATE -UNDEBUG)
+    add_test(NAME daemon_driver_e2e_test COMMAND daemon_driver_e2e_test)
+
+    add_executable(parameter_stream_test tests/ParameterStreamTest.cpp)
+    target_link_libraries(parameter_stream_test PRIVATE viper_daemon_protocol)
+    target_compile_features(parameter_stream_test PRIVATE cxx_std_20)
+    target_compile_options(parameter_stream_test PRIVATE -UNDEBUG)
+    add_test(NAME parameter_stream_test COMMAND parameter_stream_test)
+
+    add_executable(snapshot_apply_controller_test
+        tests/SnapshotApplyControllerTest.cpp
+        src/SnapshotApplyController.cpp
+    )
+    target_include_directories(snapshot_apply_controller_test PRIVATE src)
+    target_link_libraries(snapshot_apply_controller_test PRIVATE viper_daemon_protocol)
+    target_compile_features(snapshot_apply_controller_test PRIVATE cxx_std_20)
+    target_compile_options(snapshot_apply_controller_test PRIVATE -UNDEBUG)
+    add_test(NAME snapshot_apply_controller_test COMMAND snapshot_apply_controller_test)
+
+    add_executable(snapshot_command_test tests/SnapshotCommandTest.cpp)
+    target_link_libraries(snapshot_command_test PRIVATE viper_daemon_protocol)
+    target_compile_features(snapshot_command_test PRIVATE cxx_std_20)
+    target_compile_options(snapshot_command_test PRIVATE -UNDEBUG)
+    add_test(NAME snapshot_command_test COMMAND snapshot_command_test)
+
+    add_executable(viper_context_snapshot_test
+        tests/ViperContextSnapshotTest.cpp
+        src/AudioFormat.cpp
+        src/DriverDaemonBridge.cpp
+        src/DriverEventPublisher.cpp
+        src/DspGraph.cpp
+        src/DspGraphSlots.cpp
+        src/DspResources.cpp
+        src/GraphCrossfade.cpp
+        src/IemContext.cpp
+        src/IemGraph.cpp
+        src/IemGraphSlots.cpp
+        src/IemParameterMailbox.cpp
+        src/IemResources.cpp
+        src/ParameterMailbox.cpp
+        src/SnapshotApplyController.cpp
+        src/ViperContext.cpp
+    )
+    target_include_directories(viper_context_snapshot_test PRIVATE
+        src src/include ViPERDSP ViPERDSP/include)
+    target_link_libraries(viper_context_snapshot_test
+        PRIVATE viper_daemon_protocol IEMDSP ViPERDSP Threads::Threads m)
+    target_compile_features(viper_context_snapshot_test PRIVATE cxx_std_20)
+    target_compile_options(viper_context_snapshot_test PRIVATE -UNDEBUG)
+    add_test(NAME viper_context_snapshot_test COMMAND viper_context_snapshot_test)
+
+    add_executable(snapshot_ack_e2e_test
+        tests/SnapshotAckEndToEndTest.cpp
+        src/AudioFormat.cpp
+        src/DriverDaemonBridge.cpp
+        src/DriverEventPublisher.cpp
+        src/DspGraph.cpp
+        src/DspGraphSlots.cpp
+        src/DspResources.cpp
+        src/GraphCrossfade.cpp
+        src/IemContext.cpp
+        src/IemGraph.cpp
+        src/IemGraphSlots.cpp
+        src/IemParameterMailbox.cpp
+        src/IemResources.cpp
+        src/ParameterMailbox.cpp
+        src/SnapshotApplyController.cpp
+        src/ViperContext.cpp
+    )
+    target_include_directories(snapshot_ack_e2e_test PRIVATE
+        src src/include tests ViPERDSP ViPERDSP/include)
+    target_link_libraries(snapshot_ack_e2e_test
+        PRIVATE viper_daemon_protocol IEMDSP ViPERDSP Threads::Threads m)
+    target_compile_features(snapshot_ack_e2e_test PRIVATE cxx_std_20)
+    target_compile_options(snapshot_ack_e2e_test PRIVATE -UNDEBUG)
+    add_test(NAME snapshot_ack_e2e_test COMMAND snapshot_ack_e2e_test)
+
+    add_executable(daemon_golden_vector tools/DaemonGoldenVector.cpp)
+    target_link_libraries(daemon_golden_vector PRIVATE viper_daemon_protocol)
+    target_compile_features(daemon_golden_vector PRIVATE cxx_std_20)
+
+    add_executable(route_watcher_test tests/RouteWatcherTest.cpp)
+    target_link_libraries(route_watcher_test PRIVATE viper_daemon_store)
+    target_compile_features(route_watcher_test PRIVATE cxx_std_20)
+    target_compile_options(route_watcher_test PRIVATE -UNDEBUG)
+    add_test(NAME route_watcher_test COMMAND route_watcher_test)
+
+    add_executable(route_cache_test tests/RouteCacheTest.cpp)
+    target_link_libraries(route_cache_test PRIVATE viper_daemon_store)
+    target_compile_features(route_cache_test PRIVATE cxx_std_20)
+    target_compile_options(route_cache_test PRIVATE -UNDEBUG)
+    add_test(NAME route_cache_test COMMAND route_cache_test)
+
+    add_executable(app_event_server_test tests/AppEventServerTest.cpp)
+    target_link_libraries(app_event_server_test PRIVATE viper_daemon_store)
+    target_compile_features(app_event_server_test PRIVATE cxx_std_20)
+    target_compile_options(app_event_server_test PRIVATE -UNDEBUG)
+    add_test(NAME app_event_server_test COMMAND app_event_server_test)
+
+    add_executable(route_restore_integration_test
+        tests/RouteRestoreIntegrationTest.cpp
+        src/AudioFormat.cpp
+        src/DriverDaemonBridge.cpp
+        src/DriverEventPublisher.cpp
+        src/DspGraph.cpp
+        src/DspGraphSlots.cpp
+        src/DspResources.cpp
+        src/GraphCrossfade.cpp
+        src/IemContext.cpp
+        src/IemGraph.cpp
+        src/IemGraphSlots.cpp
+        src/IemParameterMailbox.cpp
+        src/IemResources.cpp
+        src/ParameterMailbox.cpp
+        src/SnapshotApplyController.cpp
+        src/ViperContext.cpp
+    )
+    target_include_directories(route_restore_integration_test PRIVATE
+        src src/include tests ViPERDSP ViPERDSP/include)
+    target_link_libraries(route_restore_integration_test
+        PRIVATE viper_daemon_store IEMDSP ViPERDSP Threads::Threads m)
+    target_compile_features(route_restore_integration_test PRIVATE cxx_std_20)
+    target_compile_options(route_restore_integration_test PRIVATE -UNDEBUG)
+    add_test(NAME route_restore_integration_test
+        COMMAND route_restore_integration_test)
+
+    add_executable(app_daemon_driver_e2e_test
+        tests/AppDaemonDriverEndToEndTest.cpp
+        src/AudioFormat.cpp
+        src/DriverDaemonBridge.cpp
+        src/DriverEventPublisher.cpp
+        src/DspGraph.cpp
+        src/DspGraphSlots.cpp
+        src/DspResources.cpp
+        src/GraphCrossfade.cpp
+        src/IemContext.cpp
+        src/IemGraph.cpp
+        src/IemGraphSlots.cpp
+        src/IemParameterMailbox.cpp
+        src/IemResources.cpp
+        src/ParameterMailbox.cpp
+        src/SnapshotApplyController.cpp
+        src/ViperContext.cpp
+    )
+    target_include_directories(app_daemon_driver_e2e_test PRIVATE
+        src src/include tests ViPERDSP ViPERDSP/include)
+    target_link_libraries(app_daemon_driver_e2e_test
+        PRIVATE viper_daemon_store IEMDSP ViPERDSP Threads::Threads m)
+    target_compile_features(app_daemon_driver_e2e_test PRIVATE cxx_std_20)
+    target_compile_options(app_daemon_driver_e2e_test PRIVATE -UNDEBUG)
+    add_test(NAME app_daemon_driver_e2e_test COMMAND app_daemon_driver_e2e_test)
 endif()
 
 add_library(v4a_re SHARED
     src/AudioFormat.cpp
+    src/DriverDaemonBridge.cpp
+    src/DriverEventPublisher.cpp
     src/DspGraph.cpp
     src/DspGraphSlots.cpp
     src/GraphCrossfade.cpp
@@ -369,6 +626,7 @@ add_library(v4a_re SHARED
     src/IemResources.cpp
     src/ParameterMailbox.cpp
     src/DspResources.cpp
+    src/SnapshotApplyController.cpp
     src/ViPER4Android.cpp
     src/ViperContext.cpp
 )
@@ -376,9 +634,10 @@ add_library(v4a_re SHARED
 target_include_directories(v4a_re PRIVATE
     src
     src/include
+    protocol
 )
 
-target_link_libraries(v4a_re IEMDSP ViPERDSP log)
+target_link_libraries(v4a_re IEMDSP ViPERDSP viper_daemon_protocol log)
 
 target_compile_options(v4a_re PRIVATE
     -Wall -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function)

@@ -136,6 +136,64 @@ bool TestReusedSlotDoesNotRetainOldResources() {
     );
 }
 
+bool TestRetractPendingFreesTheSlot() {
+    viper::audio::DspGraphSlots slots;
+    const viper::ViPERParams params{};
+    const viper::audio::DspResources resources{};
+
+    // Empty state: nothing is staged, so retraction is a no-op that must not
+    // fabricate or disturb any slot.
+    slots.RetractPending();
+    if (!Check(slots.Active() == nullptr, "retract does not invent an active graph")) {
+        return false;
+    }
+    if (!Check(slots.Pending() == nullptr, "retract does not invent a pending graph")) {
+        return false;
+    }
+
+    if (!slots.PrepareInitial({48000, 8192, 1}, params, resources)) return false;
+    slots.RetractPending();
+    if (!Check(slots.Active()->Config().generation == 1, "active survives no-op retract")) {
+        return false;
+    }
+
+    if (!slots.PreparePending({48000, 8192, 2}, params, ConvolverResources(21))) {
+        return false;
+    }
+    if (!Check(slots.Pending() != nullptr, "pending graph is staged")) return false;
+
+    // A superseded pending graph must be droppable without audio flowing,
+    // otherwise a second control-thread apply can never prepare.
+    slots.RetractPending();
+    if (!Check(slots.Pending() == nullptr, "pending slot is free after retract")) {
+        return false;
+    }
+    if (!Check(slots.Active()->Config().generation == 1, "active is untouched by retract")) {
+        return false;
+    }
+    // The audio thread sees no swap: the retracted graph never becomes active.
+    const auto swap = slots.ConsumePending();
+    if (!Check(!swap.changed, "retracted graph is not published")) return false;
+    if (!Check(swap.active->Config().generation == 1, "active generation unchanged")) {
+        return false;
+    }
+
+    // The freed slot accepts the replacement, and its resources are the new ones.
+    if (!Check(
+            slots.PreparePending({48000, 8192, 3}, params, ConvolverResources(77)),
+            "freed slot accepts the next graph"
+        )) {
+        return false;
+    }
+    const auto next = slots.ConsumePending();
+    return Check(next.changed, "replacement graph publishes")
+        && Check(next.active->Config().generation == 3, "replacement becomes active")
+        && Check(
+               next.active->Engine().GetConvolverKernelID() == 77,
+               "replacement carries its own resources"
+           );
+}
+
 } // namespace
 
 int main() {
@@ -144,6 +202,7 @@ int main() {
     if (!TestResourcesAreReadyBeforePublication()) return 1;
     if (!TestInvalidOrStalePendingGraphIsRejected()) return 1;
     if (!TestReusedSlotDoesNotRetainOldResources()) return 1;
+    if (!TestRetractPendingFreesTheSlot()) return 1;
     std::puts("DSP graph slot tests passed");
     return 0;
 }

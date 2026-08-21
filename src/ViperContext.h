@@ -1,13 +1,18 @@
 #pragma once
 
+#include "DriverDaemonBridge.h"
 #include "DspGraphSlots.h"
 #include "DspResources.h"
 #include "IemContext.h"
 #include "ParameterMailbox.h"
+#include "SnapshotApplyController.h"
 #include "essential.h"
 #include "viper/ParameterSnapshot.h"
 #include "viper/effects/AudioAnalyzer.h"
 #include <chrono>
+#include <cstdint>
+#include <mutex>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -23,6 +28,38 @@ public:
     };
 
     ViperContext();
+    ~ViperContext();
+
+    // Called once from the effect library create path, off the audio thread.
+    void AttachDaemonBridge(uint32_t audio_session_id, uint32_t io_id);
+
+    // Daemon snapshot apply path. Runs on the daemon bridge thread, which is not
+    // an AudioFlinger command thread, so these serialize on control_mutex_
+    // against each other and against HandleCommand().
+    void SetDaemonRoute(std::string device_key_hash);
+    bool BeginSnapshot(
+        const viper::audio::SnapshotMetadata &metadata,
+        viper::audio::ApplyError *error
+    );
+    bool AppendSnapshot(
+        uint32_t offset,
+        std::span<const uint8_t> chunk,
+        viper::audio::ApplyError *error
+    );
+    bool CommitSnapshot(
+        viper::audio::ApplyResult *result,
+        viper::audio::ApplyError *error,
+        std::string *message
+    );
+    void AbortSnapshot(viper::audio::ApplyError reason);
+
+    // Translates one decoded daemon command into the Begin/Append/Commit/Abort
+    // calls above and reports the outcome for the ACK/NACK frame. Runs on the
+    // daemon bridge thread.
+    viper::daemon::DriverDaemonBridge::SnapshotAck HandleSnapshotCommand(
+        viper::daemon::SnapshotCommandType type,
+        std::span<const uint8_t> payload
+    );
 
     int32_t HandleCommand(
         uint32_t cmd_code,
@@ -56,6 +93,15 @@ private:
     uint64_t graph_generation_ = 0;
     uint64_t last_streaming_frames_ = 0;
 
+    // Daemon observation identity; 0 means the bridge is not attached.
+    uint64_t daemon_context_instance_id_ = 0;
+    viper::audio::SnapshotApplyController snapshot_apply_;
+
+    // Serializes control-thread state: AudioFlinger command threads and the
+    // daemon bridge thread both mutate parameters, resources and graph slots.
+    // NEVER taken by Process(): the audio thread must not block on the daemon.
+    std::mutex control_mutex_;
+
     // Stream discontinuity detection
     std::chrono::steady_clock::time_point last_process_time_;
     bool has_processed_;
@@ -77,6 +123,19 @@ private:
         signed char *arr
     );
     void ResetGraphs() noexcept;
+
+    // Control-thread only; never called from Process().
+    void PublishDaemonGenerations();
+    void PublishDaemonTelemetry();
+
+    // Applies a decoded daemon snapshot. Control thread only: it replays raw
+    // params, prepares a pending graph, and publishes atomically.
+    bool CommitDaemonSnapshot(
+        const viper::audio::SnapshotApplyController::CommitRequest &request,
+        uint64_t *resource_generation,
+        uint64_t *graph_generation,
+        std::string *error
+    );
 
     void SetDisableReason(DisableReason reason);
     void SetDisableReason(DisableReason reason, std::string message);

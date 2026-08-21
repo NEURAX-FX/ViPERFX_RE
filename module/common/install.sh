@@ -7,6 +7,34 @@ if [ "$IS64BIT" ]; then
 cp_ch -n $MODPATH/common/files/libv4a_re_$ABI.so $MODPATH$LIBDIR/lib64/soundfx/libv4a_re.so
 fi
 
+ui_print "    Installing root audio daemon..."
+
+# functions.sh cleanup() deletes $MODPATH/common after install, so the daemon
+# binary must be copied to a persistent location inside the module.
+cp_ch -n $MODPATH/common/bin/viper-daemon_$ABI $MODPATH/bin/viper-daemon 0755
+
+# The ART effect owner. Root-readable only: app_process runs it as root, and the
+# dex is not something an app should be able to read or replace.
+#
+# A missing dex is not fatal. The init service passes --owner-dex unconditionally
+# and the daemon treats an unreadable path as a spawn failure: after a bounded
+# number of attempts it reports owner_state=failed and the App's legacy backend
+# keeps applying state. Aborting the install would leave a working setup unusable.
+if [ -f $MODPATH/common/bin/viper-owner.dex ]; then
+  cp_ch -n $MODPATH/common/bin/viper-owner.dex $MODPATH/bin/viper-owner.dex 0644
+else
+  ui_print "    ! Owner dex missing; App-owned effect fallback stays in charge"
+fi
+
+# KernelSU injects every initrc/*.rc into init.rc; Magisk ignores the directory.
+if [ -f $MODPATH/initrc/viper-daemon.rc ]; then
+  set_perm $MODPATH/initrc/viper-daemon.rc 0 0 0644
+fi
+if [ "$KSU" != "true" ]; then
+  ui_print "    ! No initrc injection on this root solution"
+  ui_print "    ! Daemon stays inactive; App-to-driver backend keeps working"
+fi
+
 ui_print "    Patching audio_effects config files"
 CFGS="$(find /odm /system /vendor -type f -name "*audio_effects*.conf" -o -name "*audio_effects*.xml")"
 for OFILE in ${CFGS}; do

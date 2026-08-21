@@ -28,6 +28,13 @@ public:
         const DspResources &resources
     );
 
+    // Control thread only. Drops a staged pending graph that Process() has not
+    // consumed yet, so a superseded preparation cannot block the next one.
+    // Cannot strand the audio thread: PreparePending() is the only writer of the
+    // pending slot and requires an active graph, so a pending graph always has an
+    // active graph behind it.
+    void RetractPending() noexcept;
+
     DspGraphSwapResult ConsumePending() noexcept;
     void ReleasePrevious() noexcept;
 

@@ -150,3 +150,6 @@ build/
 .DS_Store
 .superpowers/
 .lcm/
+
+### Host CMake build dir (out-of-tree, noexec workaround)
+build-host/

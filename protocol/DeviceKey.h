@@ -6,6 +6,17 @@
 
 namespace viper::daemon {
 
+// Canonical route-identity format.
+//
+// A device key answers "which route is this", not "what is the mixer doing right
+// now". The daemon cannot read the live mixer format without hidden AudioFlinger
+// APIs, and the App's reported format varies per stream, so both sides fill these
+// fields with fixed values. Deriving them independently would produce keys that
+// never match and every snapshot would be rejected as DEVICE_MISMATCH.
+constexpr uint32_t kRouteIdentitySampleRate = 48000;
+constexpr uint32_t kRouteIdentityChannelMask = 3;
+constexpr const char *kRouteIdentityEncoding = "pcm_16";
+
 struct DeviceIdentity {
     std::string route_type;
     std::string stable_address_or_port;

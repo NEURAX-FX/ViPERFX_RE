@@ -195,7 +195,10 @@ void HaloDialogExtractor::ProcessFrame(
             out.centre_im[bin] = (0.5F / kCentreScale) * gain * mid_im;
         }
     } else {
-        std::memset(&out, 0, sizeof(out));
+        // HaloDialogFrame has default member initializers, so it is not trivially
+        // copyable and memset on it is ill-formed (-Werror=class-memaccess).
+        // Value-initialization zeroes every float array member identically.
+        out = HaloDialogFrame{};
     }
 
     std::copy(left_re, left_re + HaloStft::kBins, left_history_re_);

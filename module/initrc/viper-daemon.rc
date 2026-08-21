@@ -1,0 +1,25 @@
+# ViPER4Android root audio daemon, owned by init.
+#
+# KernelSU injects every .rc file under a module's initrc/ directory into
+# init.rc while init reads it, so this stanza needs no system partition change.
+# Magisk has no equivalent injection point and KernelSU's late-load mode skips
+# the read() hook; in both cases init never learns about viper_daemon and
+# daemon-start.sh reports that instead of faking a service.
+#
+# The path must be literal: init has no $MODDIR. It matches module.prop id.
+#
+# No `oneshot`: init must restart the daemon if it exits unexpectedly.
+#
+# The owner dex path is literal for the same reason as the binary path. Passing it
+# unconditionally is safe: an unreadable dex is a bounded spawn failure, after
+# which the daemon reports owner_state=failed and the App's legacy backend keeps
+# applying state.
+service viper_daemon /data/adb/modules/ViPER4Android-RE/bin/viper-daemon --state-root /data/adb/viper4android --owner-dex /data/adb/modules/ViPER4Android-RE/bin/viper-owner.dex
+    class late_start
+    user root
+    group root
+    disabled
+    seclabel u:r:ksu:s0
+
+on property:sys.boot_completed=1
+    start viper_daemon
